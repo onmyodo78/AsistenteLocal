@@ -1,0 +1,42 @@
+# Bytecode, entornos y copias locales
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.bak
+*.log
+*.tmp
+
+# Configuración y material privado
+.env
+.env.*
+.aws/
+.codex/
+.agents/
+.vscode/
+exportacion_chat/
+documentos/
+informes/
+exportaciones/
+*.sqlite*
+*.db
+*.db-*
+.historial.lock
+.asistentelocal-export-*
+
+# Histórico local y componentes fuera de la primera versión experimental
+/AsistenteLocal_ESTADO_PROYECTO.md
+/redes/
+/spreadsheet_anonymizer/
+/tests/test_redes_inventario.py
+/tests/test_redes_limpieza.py
+
+# Prototipos APT y pruebas de diagnóstico experimental
+/tests/diagnostico_apt_temporal.py
+/tests/prototipo_policy_temporal.py
+/tests/prototipo_tmpfs_privado.py
+/tests/test_cachegen_temporal.py
+/tests/test_diagnostico_temporal_apt.py
+/tests/test_observabilidad_policy.py
+/tests/test_policy_temporal.py
+/tests/test_prototipo_tmpfs_privado.py

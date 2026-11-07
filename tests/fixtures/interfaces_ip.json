@@ -1,0 +1,5 @@
+[
+  {"ifname":"lo","flags":["LOOPBACK","UP"],"operstate":"UNKNOWN","stats64":{"rx":{"bytes":0,"packets":0,"errors":0,"dropped":0},"tx":{"bytes":0,"packets":0,"errors":0,"dropped":0}}},
+  {"ifname":"enp1s0","flags":["BROADCAST","UP"],"operstate":"DOWN","stats64":{"rx":{"bytes":12000,"packets":80,"errors":2,"dropped":1},"tx":{"bytes":3000,"packets":20,"errors":0,"dropped":0}}},
+  {"ifname":"wlan0","flags":["BROADCAST"],"operstate":"DOWN","stats64":{"rx":{"bytes":0,"packets":0,"errors":0,"dropped":0},"tx":{"bytes":0,"packets":0,"errors":0,"dropped":0}}}
+]

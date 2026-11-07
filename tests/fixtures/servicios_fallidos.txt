@@ -1,0 +1,3 @@
+zeta.service loaded failed failed DESCRIPCION_PRIVADA usuario ruta /home/privado
+trabajo@instancia.service loaded failed failed Descripción sensible con espacios
+ruta\x2dprueba.service not-found failed failed DESCRIPCION_PRIVADA /ruta/oculta
