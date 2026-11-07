@@ -48,7 +48,7 @@ class ErroresSimulados(unittest.TestCase):
         for codigo in (400, 404, 429, 500, 503):
             error = urllib.error.HTTPError(app.API_URL, codigo, 'simulado', {}, None)
             with self.subTest(codigo=codigo), \
-                 patch.object(app.urllib.request, 'urlopen', side_effect=error), \
+                 patch.object(app, 'abrir_http_local', side_effect=error), \
                  self.assertRaises(urllib.error.HTTPError) as capturado:
                 app.consultar_modelo([])
             self.assertEqual(capturado.exception.code, codigo)
@@ -59,7 +59,7 @@ class ErroresSimulados(unittest.TestCase):
             def read1(self, size):
                 raise TimeoutError('lectura simulada')
         http = HTTP(b'')
-        with patch.object(app.urllib.request, 'urlopen', return_value=http), \
+        with patch.object(app, 'abrir_http_local', return_value=http), \
              self.assertRaises(TimeoutError):
             app.consultar_modelo([])
         self.assertTrue(http.closed)

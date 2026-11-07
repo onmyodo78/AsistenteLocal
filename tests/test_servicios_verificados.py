@@ -216,7 +216,7 @@ class ModalidadServicios(unittest.TestCase):
         with patch.object(sys, 'argv', ['AsistenteLocal.py', '--servicios-verificados', *argumentos]), \
              patch.object(app, 'ejecutar_comando', side_effect=[efecto]) as comando, \
              patch.object(app, 'consultar_modelo', side_effect=AssertionError('No modelo')) as modelo, \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')) as http, \
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')) as http, \
              patch('builtins.input', side_effect=AssertionError('No interacción')) as entrada, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
             codigo = app.main()

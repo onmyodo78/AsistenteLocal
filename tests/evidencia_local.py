@@ -11,7 +11,7 @@ MOTIVOS_DPKG = frozenset(('limite_bytes','limite_linea','limite_stderr','limite_
     'permiso_denegado','error_sistema','aislamiento_no_disponible','error_comando',
     'avisos_no_interpretados','fila_incompleta','terminacion_no_confirmada','error_recogida'))
 MOTIVOS_APT = MOTIVOS_DPKG | frozenset(('python3_apt_no_disponible','configuracion_apt_no_disponible',
-    'consulta_apt_fallida','indices_ausentes','indices_parciales','salida_incompleta',
+    'consulta_apt_fallida','indices_ausentes','indices_parciales','seleccion_indices_no_verificada','salida_incompleta',
     'inventarios_no_coincidentes'))
 
 
@@ -92,7 +92,8 @@ def _comprobar_debian(resultado, *, apt_completo=False):
     assert all(type(v) is int for v in apt['recuentos_recogidos'].values())
     indices = apt['indices']
     if candidatos or estado_apt == 'completo':
-        assert type(indices) is dict and indices['presentes'] > 0
+        assert type(indices) is dict
+        assert indices['presentes'] > 0 or apt['motivo'] == 'seleccion_indices_no_verificada'
     if indices is not None:
         assert indices['frescura'] == 'no_verificada'
         for k in ('configurados','presentes','ausentes','umbral_aviso_s'):
@@ -100,9 +101,14 @@ def _comprobar_debian(resultado, *, apt_completo=False):
         assert indices['presentes'] + indices['ausentes'] == indices['configurados']
         assert type(indices['potencialmente_desactualizados']) is bool
         assert indices['edad_max_s'] is None or type(indices['edad_max_s']) is int
+        if 'integridad_local' in indices:
+            from apt_debian import validar_seleccion
+            validar_seleccion(indices)
     if estado_apt == 'completo':
         assert apt['codigo'] == 0 and apt['motivo'] is None and not apt['stderr_bytes']
         assert indices['ausentes'] == 0
+        if 'integridad_local' in indices:
+            assert indices['integridad_local'] == 'completa'
     else:
         assert apt['motivo'] in MOTIVOS_APT, 'Degradación sin causa explícita reconocida'
         codigo_esperado = {'python3_apt_no_disponible':70,'configuracion_apt_no_disponible':71,

@@ -13,6 +13,11 @@ import test_apt_debian as fixtures
 
 
 class InicializacionApt(unittest.TestCase):
+    def setUp(self):
+        p = patch.object(apt, 'seleccionar_indices', side_effect=fixtures.seleccion_simulada)
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_opciones_en_memoria_antes_del_sistema_y_cache(self):
         api, cache, policy, sources = fixtures.api_simulada()
         orden = []
@@ -27,7 +32,7 @@ class InicializacionApt(unittest.TestCase):
             orden.append(clave)
         def comprobar():
             self.assertEqual(opciones['Dir::Cache::pkgcache'], '')
-            self.assertEqual(opciones['Dir::Cache::srcpkgcache'], '')
+            self.assertEqual(opciones['Dir::Cache::srcpkgcache'], 'persistente')
             self.assertEqual(opciones['Debug::NoLocking'], 'true')
             self.assertEqual(opciones['Dir::State::status'], '/var/lib/dpkg/status')
             self.assertEqual(opciones['APT::Default-Release'], 'trixie')

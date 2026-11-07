@@ -32,6 +32,7 @@ from correlacion_seguridad import consultar as consultar_correlacion, presentar 
 
 from interfaces_red import ResultadoInterfaces, MIN_JSON, normalizar, resumen, informe_verificado
 from lmstudio_metrics import MedicionHTTP, registrar_metadatos
+from lmstudio_http import abrir_http_local
 from memoria import comando_meminfo, normalizar_memoria, informe_memoria
 from control_verificado import ejecutar_verificada
 from puertos import derivar_puertos, informe_puertos
@@ -44,6 +45,12 @@ from historial_contratos import adaptar_auditoria as sanear_auditoria
 
 API_URL = "http://127.0.0.1:1234/v1/chat/completions"
 MODEL = "openai/gpt-oss-20b"
+INSTRUCCION_CONTINUACION_AUDITORIA = (
+    "Interpreta exclusivamente los hechos recibidos en dos o tres frases. "
+    "Si hay datos APT, distingue las actualizaciones detectadas en los índices locales "
+    "de la frescura no verificada de esos índices. Conserva los desconocidos y las "
+    "limitaciones; no afirmes que el sistema carece de vulnerabilidades."
+)
 
 # Límites por petición; no cambian la configuración del servidor.
 MAX_SECONDS = 120
@@ -551,7 +558,7 @@ def validar_respuesta(respuesta):
     return {"role": "assistant", "content": contenido, "tool_calls": llamadas}
 
 
-def consultar_modelo(messages, deadline=None, permitir_herramientas=True):
+def consultar_modelo(messages, deadline=None, permitir_herramientas=True, omitir_tools=False):
     medicion = MedicionHTTP()
     fallo = None
     try:
@@ -580,6 +587,9 @@ def consultar_modelo(messages, deadline=None, permitir_herramientas=True):
             ],
             "tool_choice": "auto" if permitir_herramientas else "none"
         }
+        if omitir_tools and not permitir_herramientas:
+            # Prueba A/B: conservar tool_choice y la continuación completa.
+            del payload['tools']
 
         request = urllib.request.Request(
             API_URL,
@@ -589,13 +599,13 @@ def consultar_modelo(messages, deadline=None, permitir_herramientas=True):
         )
 
         medicion.datos['bytes_peticion'] = len(request.data)
-        timeout = min(MAX_MODEL_SECONDS, restante(deadline))
+        limite_http = min(deadline, time.monotonic() + MAX_MODEL_SECONDS)
+        timeout = restante(limite_http)
         medicion.fase('conexion_y_cabeceras')
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with abrir_http_local(request, timeout=timeout, medicion=medicion, deadline=limite_http) as response:
             medicion.estado_http(getattr(response, 'status', None))
             medicion.fase('lectura_cuerpo')
             datos = bytearray()
-            limite_http = min(deadline, time.monotonic() + MAX_MODEL_SECONDS)
             while True:
                 espera = restante(limite_http)
                 # urllib/HTTPResponse de CPython expone el socket a través del
@@ -605,6 +615,7 @@ def consultar_modelo(messages, deadline=None, permitir_herramientas=True):
                 if socket_http is not None:
                     socket_http.settimeout(espera)
                 bloque = response.read1(min(65536, MAX_HTTP_BYTES + 1 - len(datos)))
+                restante(limite_http)
                 if not bloque:
                     break
                 datos.extend(bloque)
@@ -882,10 +893,15 @@ def preguntar(pregunta, coleccion=None):
     hechos_interfaces_mostrados = False
     hechos_auditoria_mostrados = False
     for ronda in range(MAX_ROUNDS + 1):
-        final = (ronda == MAX_ROUNDS or llamadas_usadas >= MAX_CALLS
+        # Una auditoría estructurada ya presentada solo necesita interpretación.
+        final = (hechos_auditoria_mostrados or ronda == MAX_ROUNDS or llamadas_usadas >= MAX_CALLS
                  or volumen >= MAX_TOTAL_OUTPUT)
         try:
-            respuesta = consultar_modelo(messages, deadline, permitir_herramientas=not final)
+            opciones = {}
+            if hechos_auditoria_mostrados and 'auditoria_seguridad' in usadas:
+                opciones['omitir_tools'] = True
+            respuesta = consultar_modelo(messages, deadline, permitir_herramientas=not final,
+                                        **opciones)
             mensaje = validar_respuesta(respuesta)
         except (TimeoutError, urllib.error.URLError, OSError, http.client.HTTPException, RespuestaInvalida) as error:
             if not (hechos_interfaces_mostrados or hechos_auditoria_mostrados):
@@ -924,6 +940,7 @@ def preguntar(pregunta, coleccion=None):
         if llamadas_usadas + len(llamadas) > MAX_CALLS:
             raise RespuestaInvalida("La respuesta excede el presupuesto de herramientas.")
         messages.append(mensaje)
+        interpretar_auditoria = False
         for llamada in llamadas:
             restante(deadline)
             nombre = llamada["function"]["name"]
@@ -955,10 +972,12 @@ def preguntar(pregunta, coleccion=None):
                 # Mostrar hechos completos del alcance antes de la interpretación.
                 print('\n' + limitar(informe_auditoria(resultado.datos), MAX_OUTPUT))
                 hechos_auditoria_mostrados = True
+                interpretar_auditoria |= nombre == 'auditoria_seguridad'
                 resultado = resultado.ajustar(limite)
             elif isinstance(resultado, ResultadoDebian):
                 print('\n' + resumen_factual_debian(resultado.datos))
                 hechos_auditoria_mostrados = True
+                interpretar_auditoria |= nombre == 'auditoria_seguridad'
                 resultado = resultado.ajustar(limite)
             elif isinstance(resultado, ResultadoInterfaces):
                 # Serializar de nuevo o sustituir por un aviso JSON completo; nunca cortarlo.
@@ -970,6 +989,10 @@ def preguntar(pregunta, coleccion=None):
             volumen += len(resultado)
             messages.append({"role": "tool", "tool_call_id": llamada["id"],
                              "content": resultado})
+        if interpretar_auditoria and INSTRUCCION_CONTINUACION_AUDITORIA:
+            # Conservar la secuencia assistant/tool y el resumen factual íntegro.
+            messages[0] = {**messages[0], "content": messages[0]["content"] +
+                           "\n\n" + INSTRUCCION_CONTINUACION_AUDITORIA}
         if llamadas_usadas >= MAX_CALLS or volumen >= MAX_TOTAL_OUTPUT or ronda == MAX_ROUNDS - 1:
             messages.append({"role": "system", "content":
                              "Presupuesto de herramientas agotado. Responde con los datos obtenidos y sus limitaciones."})

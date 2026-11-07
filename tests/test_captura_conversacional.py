@@ -177,7 +177,7 @@ class PresentacionDebian(unittest.TestCase):
         with patch.object(app,'consultar_modelo',side_effect=efectos) as modelo, \
              patch.object(app,'ejecutar_consulta',return_value=resultado) as adquirir, \
              patch.object(app.subprocess,'Popen',side_effect=AssertionError('Proceso real')), \
-             patch.object(app.urllib.request,'urlopen',side_effect=AssertionError('LM Studio real')), \
+             patch.object(app,'abrir_http_local',side_effect=AssertionError('LM Studio real')), \
              contextlib.redirect_stdout(io.StringIO()) as salida:
             app.preguntar('auditoría simulada')
         adquirir.assert_called_once()

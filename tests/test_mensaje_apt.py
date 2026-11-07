@@ -15,6 +15,10 @@ class MensajeApt(unittest.TestCase):
             ('E:fallo (1: Operation not permitted)', 'permisos'),
             ('E:Could not open file /privado/SECRETO', 'apertura_archivo'),
             ('E:Unable to mkstemp /privado/SECRETO', 'temporal'),
+            ('E:Unable to mkstemp /privado/SECRETO - GetTempFile (13: Permission denied), '
+             'E:The package lists or status file could not be parsed or opened.', 'permisos'),
+            ('E:Could not create temporary file /privado/SECRETO (1: Operation not permitted)',
+             'permisos'),
             ('E:Could not create temporary file for /privado/SECRETO', 'temporal'),
             ('E:Dynamic MMap ran out of room. SECRETO', 'memoria'),
             ("E:Couldn't make mmap of 12345 bytes", 'memoria'),

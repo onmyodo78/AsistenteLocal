@@ -338,7 +338,13 @@ def adaptar_auditoria(d, distribucion):
             apt = d['actualizaciones']
             _claves(apt, ('version', 'fuente', 'estado_adquisicion', 'motivo', 'codigo', 'duracion_s',
                 'bytes', 'stderr_bytes', 'indices', 'candidatos', 'recuentos_recogidos',
-                'total_posibles', 'instalabilidad', 'seguridad', 'limitaciones'))
+                'total_posibles', 'instalabilidad', 'seguridad', 'limitaciones',
+                'cobertura_aplicaciones'), ('version', 'fuente', 'estado_adquisicion',
+                'motivo', 'codigo', 'duracion_s', 'bytes', 'stderr_bytes', 'indices',
+                'candidatos', 'recuentos_recogidos', 'total_posibles', 'instalabilidad',
+                'seguridad', 'limitaciones'))
+            if apt.get('cobertura_aplicaciones', 'no_verificada') != 'no_verificada':
+                _error()
             if type(apt['version']) is not int or apt['version'] != 1 or apt['fuente'] != 'apt_pkg.Policy':
                 _error()
             _numero(apt['total_posibles'])
@@ -347,7 +353,18 @@ def adaptar_auditoria(d, distribucion):
                 _numero(valor)
             if apt['indices'] is not None:
                 _claves(apt['indices'], ('configurados', 'presentes', 'ausentes', 'edad_max_s',
-                    'potencialmente_desactualizados', 'frescura', 'umbral_aviso_s'))
+                    'potencialmente_desactualizados', 'frescura', 'umbral_aviso_s',
+                    'necesarios', 'opcionales', 'no_aplicables', 'declarados_vacios',
+                    'indeterminados', 'seleccion_verificada', 'integridad_local'),
+                    ('configurados', 'presentes', 'ausentes', 'edad_max_s',
+                     'potencialmente_desactualizados', 'frescura', 'umbral_aviso_s'))
+                if set(apt['indices']) & {'necesarios', 'opcionales', 'no_aplicables',
+                        'declarados_vacios', 'indeterminados', 'seleccion_verificada', 'integridad_local'}:
+                    from apt_debian import validar_seleccion
+                    validar_seleccion(apt['indices'])
+                    if (apt['estado_adquisicion'] == 'completo' and
+                            apt['indices']['integridad_local'] != 'completa'):
+                        _error()
             _filas(apt['candidatos'], ('nombre_binario', 'arquitectura', 'instalada', 'candidata',
                 'prioridad', 'retenido', 'superior', 'posible_actualizacion', 'instalable_garantizada', 'origenes'))
             for fila in apt['candidatos']:

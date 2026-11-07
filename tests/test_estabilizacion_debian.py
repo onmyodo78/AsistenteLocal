@@ -25,7 +25,7 @@ class EstabilizacionDebian(unittest.TestCase):
         self.pila = contextlib.ExitStack()
         self.addCleanup(self.pila.close)
         self.pila.enter_context(patch.object(app.subprocess,'Popen',side_effect=AssertionError('Proceso real')))
-        self.pila.enter_context(patch.object(app.urllib.request,'urlopen',side_effect=AssertionError('HTTP real')))
+        self.pila.enter_context(patch.object(app,'abrir_http_local',side_effect=AssertionError('HTTP real')))
         self.pila.enter_context(patch.object(app.urllib.request,'build_opener',side_effect=AssertionError('HTTP real')))
         importar = __import__
         def sin_apt(nombre,*args,**kw):
@@ -105,7 +105,7 @@ class EstabilizacionDebian(unittest.TestCase):
         http.__enter__ = Mock(return_value=http)
         http.__exit__ = Mock(return_value=False)
         http.read1.side_effect = [json.dumps(respuesta(content='simulado')).encode(),b'']
-        with self.seleccionar(),patch.object(app.urllib.request,'urlopen',return_value=http) as abrir, \
+        with self.seleccionar(),patch.object(app,'abrir_http_local',return_value=http) as abrir, \
              patch.object(app,'registrar_metadatos'):
             app.consultar_modelo([{'role':'user','content':'simulado'}])
         contenido = json.loads(abrir.call_args.args[0].data)

@@ -242,7 +242,7 @@ class ModalidadMemoria(unittest.TestCase):
         with patch.object(sys, 'argv', ['AsistenteLocal.py', '--memoria-verificada']), \
              patch.object(app, 'ejecutar_comando', return_value=respuesta) as ejecutar, \
              patch.object(app, 'consultar_modelo', side_effect=AssertionError('No modelo')) as modelo, \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')) as http, \
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')) as http, \
              patch.object(app, 'ejecutar_consulta', side_effect=AssertionError('No otras herramientas')) as consulta, \
              patch('builtins.input', side_effect=AssertionError('No interacción')) as entrada, \
              contextlib.redirect_stdout(io.StringIO()) as salida:

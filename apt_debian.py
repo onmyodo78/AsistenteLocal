@@ -14,6 +14,7 @@ import sys
 import time
 
 from auditoria_debian import NOMBRE, ARQUITECTURA, VERSION, _finalizar_proceso
+from apt_indices import seleccionar_indices
 
 MAX_BYTES = 4 * 1024 * 1024
 MAX_LINEA = 16384
@@ -60,6 +61,8 @@ def _clasificar_mensaje(exc):
             return 'indeterminado'
         coincidencias = {categoria for categoria, patron in PATRONES_MENSAJE
                         if re.search(patron, mensaje)}
+        if coincidencias == {'temporal', 'permisos'}:
+            return 'permisos'
         return coincidencias.pop() if len(coincidencias) == 1 else 'indeterminado'
     except Exception:
         return 'indeterminado'
@@ -159,30 +162,49 @@ def validar_registro(r):
     return r
 
 
+def validar_seleccion(meta):
+    if set(meta) != {'configurados', 'presentes', 'ausentes', 'edad_max_s',
+            'potencialmente_desactualizados', 'frescura', 'umbral_aviso_s',
+            'necesarios', 'opcionales', 'no_aplicables', 'declarados_vacios',
+            'indeterminados', 'seleccion_verificada', 'integridad_local'}:
+        raise ValueError('campos_indices_invalidos')
+    for campo in ('necesarios', 'opcionales', 'no_aplicables', 'declarados_vacios', 'indeterminados'):
+        if type(meta[campo]) is not int or not 0 <= meta[campo] <= MAX_INDICES:
+            raise ValueError('seleccion_invalida')
+    if (type(meta['seleccion_verificada']) is not bool or
+            meta['necesarios'] + meta['opcionales'] != meta['configurados'] or
+            (meta['seleccion_verificada'] and meta['indeterminados'])):
+        raise ValueError('seleccion_incoherente')
+    esperado = ('desconocida' if not meta['seleccion_verificada'] else
+                'parcial' if meta['ausentes'] else 'completa')
+    if meta['integridad_local'] != esperado:
+        raise ValueError('integridad_incoherente')
+
+
 def _indices(cache, sources, ahora, contexto=None):
-    configurados = presentes = 0
     _etapa(contexto, 'enumerar_indices')
-    for meta in sources.list:
-        for indice in meta.index_files:
-            _etapa(contexto, 'propiedades_indice')
-            if indice.has_packages:
-                configurados += 1
-                presentes += int(indice.exists)
-                if configurados > MAX_INDICES:
-                    raise ValueError('limite_indices')
+    seleccion, archivos = seleccionar_indices()
     edades = []
+    cargados = set()
     _etapa(contexto, 'enumerar_archivos')
     for numero, archivo in enumerate(cache.file_list):
         if numero >= MAX_INDICES:
             raise ValueError('limite_indices')
+        if archivo.index_type != 'Debian Package Index':
+            continue
+        cargados.add(archivo.filename)
         _etapa(contexto, 'buscar_indice')
         indice = sources.find_index(archivo)
-        if indice is not None and indice.has_packages and indice.exists:
+        if indice is not None and indice.exists and archivo.filename in archivos:
             _etapa(contexto, 'stat_indice')
             edades.append(ahora - os.stat(archivo.filename).st_mtime)
     _etapa(contexto, 'resumir_indices')
-    return dict(configurados=configurados, presentes=presentes,
-        ausentes=configurados-presentes, edad_max_s=int(max(edades)) if edades else None,
+    if cargados - archivos or len(cargados & archivos) < seleccion['presentes']:
+        seleccion['seleccion_verificada'] = False
+    integridad = ('desconocida' if not seleccion['seleccion_verificada'] else
+                  'parcial' if seleccion['ausentes'] else 'completa')
+    return dict(seleccion, integridad_local=integridad,
+        edad_max_s=int(max(edades)) if edades else None,
         potencialmente_desactualizados=not edades or min(edades) < 0 or max(edades) > EDAD_AVISO,
         frescura='no_verificada', umbral_aviso_s=EDAD_AVISO)
 
@@ -243,7 +265,6 @@ def emitir_local():
             return 71
         config.set('Dir::State::status', '/var/lib/dpkg/status')
         config.set('Dir::Cache::pkgcache', '')
-        config.set('Dir::Cache::srcpkgcache', '')
         config.set('Debug::NoLocking', 'true')
         _etapa(contexto, 'init_system')
         apt_pkg.init_system()
@@ -281,7 +302,7 @@ def emitir_local():
             _etapa(contexto, 'emitir_' + tipo)
             print(texto, flush=True)
         emitir(dict(tipo='indices', datos=metadata))
-        if not metadata['presentes']:
+        if metadata['seleccion_verificada'] and not metadata['presentes']:
             return 67
         cantidad = 0
         _etapa(contexto, 'iterar_paquetes')
@@ -349,6 +370,7 @@ class Acumulador:
                         type(meta['potencialmente_desactualizados']) is not bool or
                         meta['frescura'] != 'no_verificada'):
                         raise ValueError()
+                    validar_seleccion(meta)
                     self.indices = meta
                 elif dato['tipo'] == 'fin':
                     if type(dato['registros']) is not int or dato['registros'] != len(self.registros):
@@ -430,6 +452,7 @@ def consultar_actualizaciones(timeout):
         if not a.motivo:
             a.motivo = ('error_comando' if codigo else 'avisos_no_interpretados' if a.stderr_bytes else
                 'salida_incompleta' if a.pendiente or not a.fin else
+                'seleccion_indices_no_verificada' if a.indices and not a.indices['seleccion_verificada'] else
                 'indices_ausentes' if not a.indices or not a.indices['presentes'] else
                 'indices_parciales' if a.indices['ausentes'] else None)
     _reenviar_diagnostico(a.error_acotado, codigo)
@@ -443,7 +466,9 @@ def consultar_actualizaciones(timeout):
         indices=a.indices, candidatos=a.registros, recuentos_recogidos=cantidades,
         total_posibles=cantidades['posibles'] if completo else None,
         instalabilidad='no_comprobada', seguridad='no_evaluada',
+        cobertura_aplicaciones='no_verificada',
         limitaciones=['Solo índices locales: frescura y cobertura no garantizadas.',
+            'Integridad local completa no acredita actualidad ni cobertura de aplicaciones ajenas a los repositorios.',
             'Candidata superior no garantiza instalación; no se resuelven dependencias ni fases de despliegue.',
             'Retenciones excluidas de posibles actualizaciones; no se modifica su selección.',
             'La procedencia candidata no acredita el repositorio de instalación original.',

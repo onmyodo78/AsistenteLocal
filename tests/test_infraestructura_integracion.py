@@ -76,7 +76,7 @@ class InfraestructuraIntegracion(unittest.TestCase):
              patch.object(integracion, 'comprobar', side_effect=validar), \
              patch.object(integracion, 'comprobar_respuesta'), \
              patch.object(app.subprocess, 'Popen', side_effect=AssertionError('Proceso real prohibido')), \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('HTTP real prohibido')), \
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('HTTP real prohibido')), \
              contextlib.redirect_stdout(io.StringIO()):
             caso.run(resultado)
         return resultado, ejecutadas

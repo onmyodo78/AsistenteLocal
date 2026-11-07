@@ -35,7 +35,7 @@ class PlazosCompartidos(unittest.TestCase):
     def setUp(self):
         # Una regresión que intente usar red o comandos reales falla la prueba.
         self.modelo = self.enterContext(patch.object(app, 'consultar_modelo', side_effect=AssertionError('No modelo')))
-        self.http = self.enterContext(patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')))
+        self.http = self.enterContext(patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')))
         self.comandos = self.enterContext(patch.object(app, 'ejecutar_comando', side_effect=AssertionError('No comandos reales')))
 
     def tearDown(self):

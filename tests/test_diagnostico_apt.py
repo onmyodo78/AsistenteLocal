@@ -16,6 +16,11 @@ import test_apt_debian as fixtures
 
 
 class DiagnosticoApt(unittest.TestCase):
+    def setUp(self):
+        p = patch.object(apt, 'seleccionar_indices', side_effect=fixtures.seleccion_simulada)
+        p.start()
+        self.addCleanup(p.stop)
+
     def worker(self, preparar):
         api, cache, policy, sources = fixtures.api_simulada()
         preparar(api, cache, policy, sources)

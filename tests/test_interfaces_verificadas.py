@@ -100,7 +100,7 @@ class ModalidadVerificada(unittest.TestCase):
         with patch.object(sys, 'argv', ['AsistenteLocal.py', '--interfaces-verificadas']), \
              patch.object(app, 'ejecutar_consulta', return_value=ResultadoInterfaces(d, app.MAX_OUTPUT)) as consulta, \
              patch.object(app, 'consultar_modelo', side_effect=AssertionError('No autorizado')) as modelo, \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')) as http, \
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')) as http, \
              patch('builtins.input', side_effect=AssertionError('No interacción')) as entrada, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
             codigo = app.main()
@@ -184,7 +184,7 @@ class ModalidadVerificada(unittest.TestCase):
     def test_ruta_completa_con_adquisicion_simulada_solo_dos_comandos(self):
         with patch.object(sys, 'argv', ['AsistenteLocal.py', '--interfaces-verificadas']), \
              patch.object(app, 'ejecutar_comando', side_effect=[(0, IP, '', False), (0, NM, '', False)]) as comando, \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')) as http, \
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')) as http, \
              patch.object(app, 'consultar_modelo', return_value={'content': 'Wi-Fi apagada'}) as modelo, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
             self.assertEqual(app.main(), 0)

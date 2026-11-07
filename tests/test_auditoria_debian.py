@@ -155,7 +155,7 @@ class InventarioDebian(unittest.TestCase):
              patch.object(app.os.path, 'isfile', return_value=False), \
              patch.object(app, 'inventario_debian') as adquirir, \
              patch.object(app.subprocess, 'Popen', side_effect=AssertionError('Proceso real')), \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('HTTP real')), \
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('HTTP real')), \
              patch.object(app, 'ALLOW_EXTERNAL', True):
             entorno = app.entorno_ejecucion()
             self.assertEqual(entorno['dependencias']['auditoria_seguridad']['dpkg-query']['estado'], 'ausente')

@@ -24,7 +24,16 @@ def indices(**cambios):
     dato = dict(configurados=1, presentes=1, ausentes=0, edad_max_s=100,
         potencialmente_desactualizados=False, frescura='no_verificada', umbral_aviso_s=604800)
     dato.update(cambios)
+    dato.update(necesarios=dato['configurados'], opcionales=0, no_aplicables=0,
+        declarados_vacios=0, indeterminados=0, seleccion_verificada=True,
+        integridad_local='parcial' if dato['ausentes'] else 'completa')
     return dato
+
+
+def seleccion_simulada():
+    return (dict(configurados=1, presentes=1, ausentes=0, necesarios=1, opcionales=0,
+        no_aplicables=0, declarados_vacios=0, indeterminados=0, seleccion_verificada=True),
+        {'/indice'})
 
 
 def registro(**cambios):
@@ -45,7 +54,8 @@ def salida(registros=None, meta=None, fin=True):
 
 
 def api_simulada(held=False, candidata='1:2.0-1', orden=1, prioridad=990):
-    archivo = NS(origin='Debian', archive='trixie', component='main', site='deb.example', filename='/indice')
+    archivo = NS(origin='Debian', archive='trixie', component='main', site='deb.example',
+                 filename='/indice', index_type='Debian Package Index')
     indice = NS(has_packages=True, exists=True, is_trusted=True)
     instalada = NS(ver_str='1:1.0-1', arch='amd64')
     version = NS(ver_str=candidata, arch='amd64', file_list=[(archivo,0)]) if candidata else None
@@ -74,6 +84,11 @@ def api_simulada(held=False, candidata='1:2.0-1', orden=1, prioridad=990):
 
 
 class AptLocal(unittest.TestCase):
+    def setUp(self):
+        p = patch.object(apt, 'seleccionar_indices', side_effect=seleccion_simulada)
+        self.seleccionar = p.start()
+        self.addCleanup(p.stop)
+
     def adquirir(self, texto=None, codigo=0, stderr=b'', timeout=False):
         proceso = Mock()
         proceso.stdout.fileno.return_value = 1
@@ -134,6 +149,9 @@ class AptLocal(unittest.TestCase):
                 self.assertEqual(meta['potencialmente_desactualizados'],aviso)
                 self.assertEqual(meta['frescura'],'no_verificada')
         sources.list[0].index_files[0].exists = False
+        meta, rutas = seleccion_simulada()
+        meta.update(presentes=0, ausentes=1)
+        self.seleccionar.side_effect = lambda: (meta.copy(), rutas)
         self.assertEqual(apt._indices(NS(file_list=[]),sources,1000000)['ausentes'],1)
         datos = self.adquirir(salida([],indices(presentes=0,ausentes=1),fin=False),codigo=67)
         self.assertEqual(datos['motivo'],'indices_ausentes')
@@ -229,7 +247,8 @@ class AptLocal(unittest.TestCase):
         policy.read_pinfile.assert_called_once_with('/etc/apt/preferences')
         policy.read_pindir.assert_called_once_with('/etc/apt/preferences.d/')
         api.config.set.assert_any_call('Dir::Cache::pkgcache','')
-        api.config.set.assert_any_call('Dir::Cache::srcpkgcache','')
+        self.assertNotIn('Dir::Cache::srcpkgcache',
+                         [llamada.args[0] for llamada in api.config.set.call_args_list])
         api.config.set.assert_any_call('Debug::NoLocking','true')
         for prohibido in ('Acquire','DepCache','PackageManager'):
             getattr(api,prohibido).assert_not_called()
@@ -285,6 +304,9 @@ class AptLocal(unittest.TestCase):
     def test_worker_indices_ausentes_y_errores_sin_salida_sensible(self):
         api, cache, policy, sources = api_simulada()
         sources.list[0].index_files[0].exists = False
+        meta, rutas = seleccion_simulada()
+        meta.update(presentes=0, ausentes=1)
+        self.seleccionar.side_effect = lambda: (meta.copy(), rutas)
         for fallo, esperado in ((False,67),(True,72)):
             if fallo:
                 api.Cache.side_effect = OSError('RUTA_SECRETA')

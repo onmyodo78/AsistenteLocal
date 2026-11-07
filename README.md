@@ -1,8 +1,11 @@
 # AsistenteLocal
 
 Versión experimental de un asistente de consultas locales de solo lectura para
-Fedora KDE, con **soporte parcial de Debian 13**. En Debian se dispone del
-inventario dpkg; la adquisición de candidatas APT puede fallar o ser parcial.
+Fedora KDE y Debian 13, con capacidades específicas según distribución. En Debian
+se dispone de inventario dpkg y adquisición de candidatas según índices APT
+locales, con una ejecución real completa comunicada por el usuario. Se conservan
+estados parciales y errores cuando la adquisición no puede completarse; la
+frescura de los índices sigue sin verificarse.
 No se implementa correlación CVE Debian ni se certifica ausencia de vulnerabilidades.
 
 ## Propósito y extensibilidad
@@ -435,9 +438,17 @@ intento de crear procesos, acceder a red, cargar aislamiento real o importar APT
 real. No registró operaciones prohibidas. Persistencia y exportación usaron
 memoria o directorios temporales de prueba; no se contactó con LM Studio.
 Estos resultados describen el árbol local validado: incluyen pruebas simuladas
-de componentes independientes que se excluyen de la primera publicación. No
+de componentes independientes que se excluyen del alcance de esta actualización. No
 representan el recuento de un descubrimiento automático del contenido publicado.
 No se han repetido pruebas para esta actualización documental.
+
+`tests/test_apt_landlock_local.py` es una integración real específica del entorno
+de desarrollo, desactivada por defecto. Solo se activa explícitamente con
+`ASISTENTE_PRUEBAS_APT=1`; `ASISTENTE_PRUEBAS_REALES=0` no controla esa clase.
+Sus expectativas incluyen una instantánea concreta de índices y requieren
+python3-apt, aislamiento disponible y una srcpkgcache reutilizable. No es
+necesariamente portable ni acredita funcionamiento en otras instalaciones.
+No prepara ni modifica los índices o la caché de Debian para satisfacerlas.
 
 **`ASISTENTE_PRUEBAS_REALES=0` solo desactiva la clase de integración optativa.**
 No garantiza que el descubrimiento general evite procesos externos: algunas
@@ -458,7 +469,7 @@ conservan como código, pero requieren revisión y autorización separadas antes
 su ejecución. Las integraciones pueden consultar herramientas del anfitrión,
 APT y LM Studio; no forman parte de la validación simulada. Publicar sus archivos
 no autoriza a ejecutarlas. Los prototipos APT y sus pruebas específicas quedan
-fuera de esta primera versión.
+fuera del alcance de esta actualización del repositorio publicado.
 
 La validación Debian distingue el contrato parcial de la cobertura APT completa.
 Un inventario dpkg válido se comprueba aunque falte `python3-apt`. Un fallo APT
@@ -470,14 +481,17 @@ Fedora conserva sus contratos y descripciones específicos.
 ## Metadatos HTTP y recuperación
 
 Cada llamada a LM Studio emite una línea `LMSTUDIO_METRICAS` por stderr con tiempos
-de preparación, conexión/espera de cabeceras, lectura, cierre, validación y total;
+de preparación, conexión TCP, envío, espera de cabeceras, lectura, cierre,
+validación y total;
 tamaños observados, estado HTTP, finish_reason y tokens cuando están disponibles.
 No crea archivos ni registra mensajes, contenido de herramientas, credenciales,
-razonamiento textual o texto de errores. Con urllib no se separan los tiempos
-internos del servidor ni DNS/TCP de la espera de cabeceras.
+razonamiento textual o texto de errores. El transporte local conecta directamente
+a 127.0.0.1 sin DNS ni proxies. La espera de cabeceras no distingue cola,
+evaluación del contexto y generación dentro del servidor.
 
-Los límites se mantienen: hasta 45 segundos para conexión/cabeceras y hasta 45
-para lectura, acotados por los 120 segundos globales de la petición. No se aumentan
+Cada petición HTTP comparte un único plazo de hasta 45 segundos entre conexión,
+envío, cabeceras y lectura, acotado por los 120 segundos globales de la pregunta.
+El plazo no se reinicia al empezar a leer el cuerpo. Los límites no se aumentan
 para obtener métricas ni se activan reintentos.
 
 Si LM Studio falla después de mostrar los hechos de interfaces, el resumen factual
@@ -574,9 +588,10 @@ completa significa que cabe la vista, no que la adquisición sea completa.
 `AUDITORIA_METRICAS` emite por stderr fuente, duración, bytes de ambos canales,
 estado, código y número de registros/grupos recogidos. No incluye inventarios,
 versiones, IDs de avisos, errores originales, rutas de usuario ni credenciales.
-No crea archivos de log. Las métricas HTTP existentes no cambian: timeout de
-45 segundos para cabeceras y hasta 45 para lectura, acotados por 120 globales;
-max_tokens=1800, sin streaming ni reintentos. Rondas y llamadas permanecen iguales.
+No crea archivos de log. El plazo HTTP actual es de hasta 45 segundos compartidos
+entre conexión, envío, cabeceras y lectura, acotado por 120 segundos globales;
+max_tokens=1800, sin streaming ni reintentos. Se conservan los presupuestos de
+rondas y llamadas; la auditoría estructurada pasa directamente a interpretación.
 
 ### Interpretación y limitaciones
 
@@ -659,12 +674,18 @@ esta comprobación, ni se modificaron paquetes, configuración o programadores.
 
 ## Debian 13: inventario y candidatos APT locales
 
-**Estado de preparación experimental, 7 de noviembre de 2026:** inventario dpkg
-validado anteriormente en ejecución real; adquisición de candidatas APT sin
-validación real satisfactoria bajo las protecciones actuales.
-`apt_pkg.Cache(None)` ha fallado con `SystemError` y código diagnóstico 72.
-**Cobertura de actualizaciones no verificada.** Un fallo o un total desconocido
-no significa que no existan actualizaciones o vulnerabilidades.
+**Estado experimental actualizado:** según la última ejecución autorizada
+comunicada por el usuario, el inventario dpkg fue completo, con **3109 paquetes
+instalados**, y la adquisición APT fue completa, con **0 actualizaciones
+candidatas según los índices locales**. Es una observación de esa ejecución,
+no una garantía para otras instalaciones o consultas futuras. La frescura de
+los índices y la cobertura de aplicaciones siguen sin verificarse; cero
+candidatas no demuestra ausencia de vulnerabilidades.
+
+Como antecedente, las ejecuciones investigadas el 7 de noviembre de 2026 habían
+fallado al abrir `apt_pkg.Cache(None)`, con `SystemError` y código diagnóstico 72.
+Ese fallo histórico no describe el resultado de la última ejecución comunicada.
+Un fallo o un total desconocido tampoco significa que no existan actualizaciones.
 
 Las tres fases de estabilización añadieron presentación factual independiente
 del modelo, mensajes según distribución, contratos de integración parcial y
@@ -689,8 +710,14 @@ Las lecturas son secuenciales y se detectan discrepancias entre ambas fuentes.
 de recursos existentes, y después se importa apt_pkg. No se invocan explícitamente
 Acquire, DepCache, PackageManager, update, upgrade ni simulaciones. El constructor
 nativo Cache puede ejecutar internamente BuildCaches, BuildPolicy y BuildDepCache.
-Se configura construcción en memoria con cachés persistentes desactivadas; su
-apertura real falla actualmente. El recorrido previsto de Policy aplica configuración APT
+Se fija `Dir::Cache::pkgcache` a una cadena vacía y `Debug::NoLocking` a `true`.
+No se sobrescribe `Dir::Cache::srcpkgcache`: conserva el valor inicializado por
+APT, permitiendo reutilizar una caché de fuentes existente si resulta válida.
+Por tanto, no están desactivadas todas las cachés persistentes. No se prepara ni
+regenera esa caché fuera del aislamiento; si APT necesita operaciones que este
+deniega, la adquisición falla y conserva sus errores y desconocidos. El fallo
+real de apertura citado arriba es un antecedente, no una prueba de que toda
+ejecución con la configuración actual falle. El recorrido de Policy aplica configuración APT
 y preferencias; se conserva la candidata, prioridad y procedencias locales,
 distinguiendo arquitecturas y retenciones. No se cambia la selección de paquetes.
 
@@ -718,14 +745,43 @@ parciales impiden confirmar un total global. No se efectúan conexiones de red.
 El inventario y las filas de candidatos permanecen locales, en .datos. El modelo
 solo recibe estados, recuentos y limitaciones en un resumen de hasta 5.000
 caracteres; no recibe nombres de paquetes, versiones ni sitios de repositorios.
-Las adquisiciones APT reales autorizadas han fallado bajo el aislamiento. La
-validación satisfactoria queda pendiente; la investigación está suspendida y no
-se autoriza ninguna nueva ejecución por este documento. Las pruebas automatizadas
-indicadas se ejecutaron con las integraciones reales desactivadas.
+Tras los fallos históricos bajo el aislamiento, la última ejecución autorizada
+comunicada por el usuario completó dpkg y APT con los recuentos indicados arriba.
+La adquisición completa no valida la frescura de los índices ni evalúa
+vulnerabilidades. No se autoriza ninguna nueva ejecución por este documento.
+Las pruebas automatizadas indicadas se ejecutaron con las integraciones reales
+desactivadas; el resultado real comunicado es una evidencia separada.
+
+## Continuación de auditoría y timeout de LM Studio
+
+Tras una ejecución autorizada de `auditoria_seguridad` con resultado estructurado,
+la continuación omite `tools`, conserva `tool_choice="none"` e incorpora en el
+mensaje system existente una instrucción de interpretación de dos o tres frases.
+Esta exige distinguir las actualizaciones detectadas en índices APT locales de
+la frescura no verificada de esos índices y no afirmar ausencia de vulnerabilidades.
+Se conservan los hechos calculados por Python, el historial y los `tool_call_id`,
+`max_tokens=1800`, temperatura y límite HTTP de 45 segundos. La primera petición
+conserva las definiciones de herramientas; las demás herramientas mantienen su flujo.
+
+La primera prueba A/B añadió solo la instrucción breve. Según el resultado real
+comunicado por el usuario, la segunda petición volvió a agotar 45 segundos en
+`espera_cabeceras`: no se observó mejora. La segunda prueba A/B conserva esa
+instrucción y omite únicamente `tools`. Tiene una selección de 56 pruebas
+simuladas satisfactorias, pero todavía no se ha validado con LM Studio real,
+incluida la aceptación de `tool_choice="none"` sin `tools` por la versión instalada.
+El timeout sigue sin resolverse; su causa concreta y la eficacia de este cambio
+siguen pendientes. Un fallo conserva el resumen factual sin reintentos automáticos.
+
+Estos experimentos no implementan correlación CVE Debian ni evaluación de
+vulnerabilidades: ambas siguen sin implementarse para Debian y la seguridad
+permanece no evaluada. Véanse los diagnósticos de
+[continuación](DIAGNOSTICO_CONTINUACION_AUDITORIA.md) y
+[latencia](DIAGNOSTICO_LATENCIA_AUDITORIA.md), que separan los antecedentes del
+estado actual.
 
 ## Privacidad y alcance de la publicación experimental
 
-La primera versión comprende los módulos Python de la raíz, las pruebas de
+El alcance de esta actualización del repositorio ya publicado comprende los módulos Python de la raíz, las pruebas de
 producción, `tests/evidencia_local.py`, los fixtures sintéticos y la documentación
 pública. El `.gitignore` reserva fuera del repositorio exportaciones privadas,
 documentos del usuario, configuraciones personales, entornos virtuales,
@@ -762,8 +818,9 @@ opcionalmente el binding Python RPM; su ausencia deja la comparación sin
 determinar. Los ejecutables necesarios varían por herramienta y se informan al
 inicio. No se instalan dependencias automáticamente.
 
-**Pendiente antes de la subida:** revisar el contenido final seleccionado. Esta preparación documental no inicializa Git,
-no configura remotos, no publica archivos y no acredita una validación real APT.
+**Antes de actualizar GitHub:** revisar el contenido final seleccionado. Esta
+preparación documental no modifica remotos ni publica archivos y no ejecuta
+una nueva validación real APT; documenta el resultado autorizado comunicado.
 
 
 ## Evolución y mantenimiento

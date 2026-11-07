@@ -5,9 +5,32 @@ import sys
 import time
 import urllib.error
 import http.client
+import errno
 
-FASES = ('preparacion', 'conexion_y_cabeceras', 'lectura_cuerpo', 'cierre', 'validacion')
+FASES = ('preparacion', 'conexion_y_cabeceras', 'conexion_tcp', 'envio_peticion', 'espera_cabeceras', 'lectura_cuerpo', 'cierre', 'validacion')
 FINALES = {'stop', 'length', 'tool_calls', 'function_call', 'content_filter'}
+ERRORES_SISTEMA = {'TimeoutError', 'ConnectionRefusedError', 'PermissionError', 'OSError'}
+
+
+def tipo_error_sistema(error):
+    """Solo la excepción de sistema explícita; nunca inferir desde su texto.
+
+    URLError suele envolver el OSError de urllib. HTTPError.reason es una
+    razón HTTP, no una causa de transporte, y no se inspecciona.
+    """
+    if isinstance(error, urllib.error.HTTPError):
+        return None
+    if isinstance(error, urllib.error.URLError):
+        error = error.reason
+    if not isinstance(error, OSError):
+        return None
+    if isinstance(error, TimeoutError) or error.errno == errno.ETIMEDOUT:
+        return 'TimeoutError'
+    if isinstance(error, ConnectionRefusedError) or error.errno == errno.ECONNREFUSED:
+        return 'ConnectionRefusedError'
+    if isinstance(error, PermissionError) or error.errno in (errno.EACCES, errno.EPERM):
+        return 'PermissionError'
+    return 'OSError'
 
 
 def tipo_error(error):
@@ -55,7 +78,7 @@ def uso_seguro(uso):
 
 
 class MedicionHTTP:
-    """No puede separar DNS/TCP/envío/cola/generación antes de las cabeceras."""
+    """Fases locales; las cabeceras no distinguen cola y generación del servidor."""
     def __init__(self):
         self.inicio = self.inicio_fase = time.monotonic()
         self.actual = 'preparacion'
@@ -88,7 +111,8 @@ class MedicionHTTP:
         self.datos['duraciones_s'] = {k: round(v, 6) if v is not None else None
                                       for k, v in self.datos['duraciones_s'].items()}
         self.datos.update(total_s=round(max(0, ahora - self.inicio), 6),
-                          tipo_error=tipo_error(error), fase_error=self.actual if error else None)
+                          tipo_error=tipo_error(error), fase_error=self.actual if error else None,
+                          tipo_error_sistema=tipo_error_sistema(error))
         if isinstance(error, urllib.error.HTTPError):
             self.estado_http(error.code)
         if isinstance(error, http.client.IncompleteRead) and isinstance(error.partial, (bytes, bytearray)):
@@ -109,6 +133,7 @@ def registrar_metadatos(datos):
     final = datos.get('finish_reason')
     fase = datos.get('fase_error')
     error = datos.get('tipo_error')
+    sistema = datos.get('tipo_error_sistema')
     codigo = datos.get('estado_http')
     tipos = {'HTTPError', 'TimeoutError', 'URLError', 'IncompleteRead', 'HTTPException',
              'OSError', 'RespuestaInvalida', 'ValueError', 'Interrupcion', 'ErrorInterno'}
@@ -122,5 +147,6 @@ def registrar_metadatos(datos):
         'uso_tokens': uso_seguro(datos.get('uso_tokens')),
         'fase_error': fase if isinstance(fase, str) and fase in FASES else None,
         'tipo_error': error if isinstance(error, str) and error in tipos else None,
+        'tipo_error_sistema': sistema if isinstance(sistema, str) and sistema in ERRORES_SISTEMA else None,
     }
     print('LMSTUDIO_METRICAS ' + json.dumps(seguro, ensure_ascii=True, allow_nan=False), file=sys.stderr)

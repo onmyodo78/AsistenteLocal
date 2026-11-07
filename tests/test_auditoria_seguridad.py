@@ -40,7 +40,7 @@ class Auditoria(unittest.TestCase):
                 (0, kernel, '', False),
                 (0, ''.join(l + '\n' for l in rpm.splitlines() if l.startswith('kernel-core\t')), '', False),
                 (0, pendientes, '', False), (0, instalados, '', False)]) as run, \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('HTTP')):
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('HTTP')):
             datos = app.consultar_auditoria_seguridad(time.monotonic() + 120)
         self.assertEqual([c.args[0] for c in run.call_args_list], [list(audit.CONSULTAS[0][1]), list(audit.CONSULTAS[2][1]), audit.comando_aislado('pendientes'), audit.comando_aislado('instalados')])
         self.assertTrue(all(0 < c.args[1] <= 15 for c in run.call_args_list))

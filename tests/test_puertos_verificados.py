@@ -217,7 +217,7 @@ class ModalidadPuertos(unittest.TestCase):
              patch.object(app, 'ejecutar_comando', side_effect=efectos) as comandos, \
              patch.object(app, 'consultar_conexiones_verificadas', wraps=app.consultar_conexiones_verificadas) as adquirir, \
              patch.object(app, 'consultar_modelo', side_effect=AssertionError('No modelo')) as modelo, \
-             patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')) as http, \
+             patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')) as http, \
              patch('builtins.input', side_effect=AssertionError('No interacción')) as entrada, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
             codigo = app.main()

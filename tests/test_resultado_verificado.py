@@ -285,7 +285,7 @@ class IntegracionSimuladaContrato(unittest.TestCase):
                  patch.object(app, fuente_nombre, return_value=fuente_valor) as fuente_mock, \
                  patch.object(app, 'ejecutar_verificada', side_effect=observar), \
                  patch.object(app, 'consultar_modelo', side_effect=AssertionError('No modelo')) as modelo, \
-                 patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')) as http, \
+                 patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')) as http, \
                  contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(ejecutar(), 0)
             fuente_mock.assert_called_once()

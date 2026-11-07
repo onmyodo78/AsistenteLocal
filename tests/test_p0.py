@@ -119,7 +119,7 @@ class SeguridadP0(unittest.TestCase):
             with patch.object(app, '__file__', str(modulo / 'AsistenteLocal.py')), \
                  patch.object(app, 'ejecutar_comando', side_effect=AssertionError('No comandos')) as comando, \
                  patch.object(app, 'consultar_modelo', side_effect=AssertionError('No modelo')) as modelo, \
-                 patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('No HTTP')) as http:
+                 patch.object(app, 'abrir_http_local', side_effect=AssertionError('No HTTP')) as http:
                 with contextlib.chdir(ajeno):
                     self.assertEqual(Path.cwd(), ajeno)
                     texto = app.listar_documentos()
@@ -179,10 +179,10 @@ class SeguridadP0(unittest.TestCase):
 
     def test_http_errores_y_plazo(self):
         for error in [TimeoutError('timeout'), app.urllib.error.URLError('sin conexión')]:
-            with patch.object(app.urllib.request, 'urlopen', side_effect=error), \
+            with patch.object(app, 'abrir_http_local', side_effect=error), \
                  self.assertRaises(type(error)):
                 app.consultar_modelo([])
-        with patch.object(app.urllib.request, 'urlopen') as abrir, self.assertRaises(TimeoutError):
+        with patch.object(app, 'abrir_http_local') as abrir, self.assertRaises(TimeoutError):
             app.consultar_modelo([], deadline=time.monotonic() - 1)
         abrir.assert_not_called()
 
@@ -194,7 +194,7 @@ class SeguridadP0(unittest.TestCase):
         http = HTTP(json.dumps(respuesta(content='Fin')).encode())
         socket = Mock()
         http.fp = SimpleNamespace(raw=SimpleNamespace(_sock=socket))
-        with patch.object(app.urllib.request, 'urlopen', return_value=http):
+        with patch.object(app, 'abrir_http_local', return_value=http):
             app.consultar_modelo([], deadline=time.monotonic() + 2)
         self.assertGreaterEqual(socket.settimeout.call_count, 1)
         self.assertLessEqual(socket.settimeout.call_args.args[0], 2)
@@ -203,13 +203,13 @@ class SeguridadP0(unittest.TestCase):
         class HTTP(io.BytesIO):
             pass
         datos = json.dumps(respuesta(content='Hola')).encode()
-        with patch.object(app.urllib.request, 'urlopen', return_value=HTTP(datos)) as abrir:
+        with patch.object(app, 'abrir_http_local', return_value=HTTP(datos)) as abrir:
             self.assertEqual(app.consultar_modelo([])['choices'][0]['message']['content'], 'Hola')
             payload = json.loads(abrir.call_args.args[0].data)
             self.assertNotIn('diagnostico_vpn', [t['function']['name'] for t in payload['tools']])
             self.assertLessEqual(abrir.call_args.kwargs['timeout'], app.MAX_MODEL_SECONDS)
         for datos in [b'no json', b'{}', b'x' * (app.MAX_HTTP_BYTES + 1)]:
-            with patch.object(app.urllib.request, 'urlopen', return_value=HTTP(datos)), \
+            with patch.object(app, 'abrir_http_local', return_value=HTTP(datos)), \
                  self.assertRaises(app.RespuestaInvalida):
                 app.consultar_modelo([])
 

@@ -27,7 +27,7 @@ class Comunicacion(unittest.TestCase):
     def consultar(self, cuerpo=None, error=None, http=None):
         if http is None:
             http = HTTP(json.dumps(cuerpo if cuerpo is not None else completa()).encode())
-        with patch.object(app.urllib.request, 'urlopen', side_effect=error, return_value=http) as abrir, \
+        with patch.object(app, 'abrir_http_local', side_effect=error, return_value=http) as abrir, \
              patch.object(app, 'registrar_metadatos') as registrar:
             fallo = None
             valor = None
@@ -57,12 +57,13 @@ class Comunicacion(unittest.TestCase):
             reloj[0] += 1
             return validar(r)
         with patch.object(app.time, 'monotonic', side_effect=ahora), \
-             patch.object(app.urllib.request, 'urlopen', side_effect=abrir), \
+             patch.object(app, 'abrir_http_local', side_effect=abrir), \
              patch.object(app, 'validar_respuesta', side_effect=validacion), \
              patch.object(app, 'registrar_metadatos') as registrar:
             app.consultar_modelo([])
         m = registrar.call_args.args[0]
         self.assertEqual(m['duraciones_s'], {'preparacion': 0, 'conexion_y_cabeceras': 2,
+                                           'conexion_tcp': None, 'envio_peticion': None, 'espera_cabeceras': None,
                                            'lectura_cuerpo': 3, 'cierre': 0, 'validacion': 1})
         self.assertEqual(m['total_s'], 6)
         self.assertEqual(m['estado_http'], 200)
@@ -208,14 +209,14 @@ class Comunicacion(unittest.TestCase):
             reloj[0] = 4
             return http
         with patch.object(app.time, 'monotonic', side_effect=lambda: reloj[0]), \
-             patch.object(app.urllib.request, 'urlopen', side_effect=abrir), \
+             patch.object(app, 'abrir_http_local', side_effect=abrir), \
              patch.object(app, 'registrar_metadatos'):
             app.consultar_modelo([], deadline=5)
         self.assertTrue(all(c.args[0] <= 1 for c in socket.settimeout.call_args_list))
 
     def test_global_agotado_no_envia_peticion(self):
         with patch.object(app.time, 'monotonic', return_value=100), \
-             patch.object(app.urllib.request, 'urlopen') as abrir, \
+             patch.object(app, 'abrir_http_local') as abrir, \
              patch.object(app, 'registrar_metadatos') as registrar, self.assertRaises(TimeoutError):
             app.consultar_modelo([], deadline=99)
         abrir.assert_not_called()
@@ -230,7 +231,7 @@ class Comunicacion(unittest.TestCase):
                 return bloque
         http = Lenta(json.dumps(completa()).encode())
         with patch.object(app.time, 'monotonic', side_effect=lambda: reloj[0]), \
-             patch.object(app.urllib.request, 'urlopen', return_value=http), \
+             patch.object(app, 'abrir_http_local', return_value=http), \
              patch.object(app, 'registrar_metadatos') as registrar, self.assertRaises(TimeoutError):
             app.consultar_modelo([], deadline=120)
         self.assertEqual(registrar.call_args.args[0]['fase_error'], 'lectura_cuerpo')
@@ -250,7 +251,7 @@ class Comunicacion(unittest.TestCase):
         self.assertNotIn('prompt', seguro)
 
     def test_error_del_destino_de_metricas_no_cambia_respuesta(self):
-        with patch.object(app.urllib.request, 'urlopen', return_value=HTTP(json.dumps(completa()).encode())), \
+        with patch.object(app, 'abrir_http_local', return_value=HTTP(json.dumps(completa()).encode())), \
              patch.object(app, 'registrar_metadatos', side_effect=OSError('destino cerrado')):
             self.assertEqual(app.consultar_modelo([])['choices'][0]['message']['content'], 'Fin')
 
@@ -320,7 +321,7 @@ class RecuperacionInterfaces(unittest.TestCase):
 
     def test_ciclo_completo_cliente_instrumentado_con_fallo_final(self):
         inicial = HTTP(json.dumps(respuesta([llamada()])).encode())
-        with patch.object(app.urllib.request, 'urlopen', side_effect=[inicial, TimeoutError('SECRETO')]) as abrir, \
+        with patch.object(app, 'abrir_http_local', side_effect=[inicial, TimeoutError('SECRETO')]) as abrir, \
              patch.object(app, 'registrar_metadatos') as registrar, \
              patch.object(app, 'ejecutar_consulta', return_value=ResultadoInterfaces(datos(), app.MAX_OUTPUT)) as ejecutar, \
              contextlib.redirect_stdout(io.StringIO()) as salida:

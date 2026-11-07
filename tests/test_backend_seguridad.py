@@ -37,7 +37,7 @@ class SeleccionSeguridad(unittest.TestCase):
                      patch.object(app, 'consultar_auditoria_seguridad') as audit, \
                      patch.object(app, 'consultar_correlacion') as corr, \
                      patch.object(app.subprocess, 'Popen', side_effect=AssertionError('Proceso real')), \
-                     patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('HTTP real')), \
+                     patch.object(app, 'abrir_http_local', side_effect=AssertionError('HTTP real')), \
                      patch.object(app.urllib.request, 'build_opener', side_effect=AssertionError('HTTP real')):
                     for nombre in app.HERRAMIENTAS_SEGURIDAD:
                         texto = app.ejecutar_consulta(nombre)
@@ -127,7 +127,7 @@ class SeleccionSeguridad(unittest.TestCase):
                      patch.object(integracion, 'comprobar', return_value='evidencia'), \
                      patch.object(integracion, 'comprobar_respuesta'), \
                      patch.object(app.subprocess, 'Popen', side_effect=AssertionError('Proceso real')), \
-                     patch.object(app.urllib.request, 'urlopen', side_effect=AssertionError('HTTP real')), \
+                     patch.object(app, 'abrir_http_local', side_effect=AssertionError('HTTP real')), \
                      contextlib.redirect_stdout(io.StringIO()):
                     caso.run(resultado)
                 self.assertEqual(ejecutadas, [] if solo_seguridad else ['disco'])
