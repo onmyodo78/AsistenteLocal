@@ -8,6 +8,8 @@ venv/
 *.tmp
 
 # Configuración y material privado
+# Solo documentación técnica local de desarrollo; nunca secretos ni datos personales.
+/privado/
 .env
 .env.*
 .aws/

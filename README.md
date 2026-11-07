@@ -5,6 +5,53 @@ Fedora KDE, con **soporte parcial de Debian 13**. En Debian se dispone del
 inventario dpkg; la adquisición de candidatas APT puede fallar o ser parcial.
 No se implementa correlación CVE Debian ni se certifica ausencia de vulnerabilidades.
 
+## Propósito y extensibilidad
+
+El objetivo de AsistenteLocal es ofrecer una aplicación local, auditable y
+adaptable que ayude al usuario mientras trabaja en su equipo, con herramientas
+y permisos claramente definidos y una configuración segura por defecto.
+
+Actualmente, las funciones conversacionales utilizan modelos locales mediante
+LM Studio. La extensibilidad hacia otros proveedores compatibles, como Ollama,
+es un objetivo futuro, sin imponer un proveedor concreto. Todavía no existe
+selección configurable de proveedor ni integración con Ollama. La disponibilidad
+de una API similar no acredita compatibilidad sin pruebas.
+
+El proyecto público documenta sus capacidades, su verificación y sus límites,
+incluidas las funciones experimentales, y se distribuye mediante GitHub. Una
+instalación puede adaptarse localmente sobre el mismo proyecto; el objetivo es
+mantener una única aplicación. Una adaptación local no se considera capacidad
+distribuida hasta estar revisada, verificada y documentada para su publicación.
+
+## Aplicación y herramientas de desarrollo
+
+AsistenteLocal es una aplicación de línea de comandos (CLI) independiente de
+VS Code y Codex. Se ejecuta desde una terminal con Python y las dependencias
+necesarias para cada consulta. VS Code y Codex son herramientas de desarrollo,
+pruebas, mantenimiento, revisión y documentación; no son requisitos de ejecución
+ni del funcionamiento cotidiano. Codex puede trabajar
+sobre el proyecto sin que LM Studio esté abierto; las pruebas que contacten con
+el modelo sí necesitan su servidor y autorización para esa comprobación.
+
+LM Studio proporciona el modelo local utilizado por las funciones
+conversacionales. AsistenteLocal puede arrancar sin LM Studio: abrir la CLI no
+inicia ni comprueba su servidor. Las consultas que necesitan el modelo requieren
+que el servidor local esté disponible; si no lo está, se informa del fallo.
+Las modalidades verificadas descritas más abajo funcionan sin el modelo.
+
+GitHub es únicamente un medio de distribución del proyecto, no un servicio
+necesario para ejecutarlo. El usuario conserva el control sobre las consultas
+externas y las operaciones que modifiquen su sistema. Las consultas externas
+siguen desactivadas por defecto y requieren activación explícita. La versión
+actual no instala ni actualiza paquetes: la actualización supervisada descrita
+en la hoja de ruta es futura y requerirá autorización explícita del usuario.
+
+Se mantienen las restricciones actuales de seguridad y privacidad: consultas
+predefinidas, sin terminal libre para el modelo ni privilegios administrativos,
+aislamiento de las auditorías y tratamiento limitado de datos sensibles. Estos
+límites no convierten la interpretación del modelo en un resultado verificado;
+véase [Privacidad y alcance](#privacidad-y-alcance-de-la-publicación-experimental).
+
 El modo conversacional utiliza LM Studio local; los informes verificados de
 interfaces, memoria, conexiones, puertos y servicios funcionan sin él. Requiere
 Python 3.13 o 3.14. El núcleo utiliza la biblioteca estándar. `python3-apt`
@@ -718,6 +765,18 @@ inicio. No se instalan dependencias automáticamente.
 **Pendiente antes de la subida:** revisar el contenido final seleccionado. Esta preparación documental no inicializa Git,
 no configura remotos, no publica archivos y no acredita una validación real APT.
 
+
+## Evolución y mantenimiento
+
+La [hoja de ruta pública](ROADMAP.md) distingue las consultas APT experimentales
+existentes de las futuras capacidades de actualización supervisada. Estas
+capacidades futuras no están disponibles en la aplicación actual.
+
+El [procedimiento semanal recomendado](MANTENIMIENTO.md) es manual, prioriza la
+revisión local y exige autorización para consultas externas. No configura tareas
+programadas ni servicios externos y no instala actualizaciones automáticamente.
+Los cambios documentales pendientes de publicación figuran en el
+[registro de cambios](CHANGELOG.md).
 
 ## Autoría y créditos
 
