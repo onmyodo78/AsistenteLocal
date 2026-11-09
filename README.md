@@ -13,7 +13,7 @@ separadas, requieren autorización específica y no forman parte del arranque ha
 **Estado a 9 de noviembre de 2026:** entrega pública incorporada a la rama `main` de GitHub mediante el commit `9070eae`. Núcleo de lectura validado en Debian 13; lecturas nativas comprobadas en Fedora 45. Las rutas administrativas APT y DNF5 mantienen las limitaciones de validación descritas en esta documentación. No se ha creado una etiqueta de versión ni una GitHub Release.
 
 Consultar [ESTADO_VERSION.md](ESTADO_VERSION.md), [el inventario de publicación](INVENTARIO_PUBLICACION.md) y [el cierre técnico Fedora](CIERRE_TECNICO_FEDORA.md).
-y [el inventario de publicación](INVENTARIO_PUBLICACION.md). En Fedora 45 se han
+En Fedora 45 se han
 comprobado lecturas nativas; la actualización directa mediante DNF5 funcionó según
 el usuario, pero la actualización integrada de AsistenteLocal sigue sin validación
 completa. La corrección parcial de argumentos está en fuentes; los avisos de alias
