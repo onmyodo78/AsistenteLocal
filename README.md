@@ -10,9 +10,9 @@ El núcleo determinista funciona sin LM Studio, GPT-OSS, Codex, VS Code ni Inter
 Las auditorías y los planes son de solo lectura. Las rutas administrativas APT están
 separadas, requieren autorización específica y no forman parte del arranque habitual.
 
-**Estado a 9 de noviembre de 2026:** cierre local validado para el uso de lectura en
-Debian 13; cambios aún pendientes de incorporar a Git y publicar. No hay un tag ni una
-versión publicada creados por este cierre. Consultar [ESTADO_VERSION.md](ESTADO_VERSION.md)
+**Estado a 9 de noviembre de 2026:** entrega pública incorporada a la rama `main` de GitHub mediante el commit `9070eae`. Núcleo de lectura validado en Debian 13; lecturas nativas comprobadas en Fedora 45. Las rutas administrativas APT y DNF5 mantienen las limitaciones de validación descritas en esta documentación. No se ha creado una etiqueta de versión ni una GitHub Release.
+
+Consultar [ESTADO_VERSION.md](ESTADO_VERSION.md), [el inventario de publicación](INVENTARIO_PUBLICACION.md) y [el cierre técnico Fedora](CIERRE_TECNICO_FEDORA.md).
 y [el inventario de publicación](INVENTARIO_PUBLICACION.md). En Fedora 45 se han
 comprobado lecturas nativas; la actualización directa mediante DNF5 funcionó según
 el usuario, pero la actualización integrada de AsistenteLocal sigue sin validación
