@@ -1,27 +1,14 @@
 # AsistenteLocal
 
-AsistenteLocal es una aplicación local de administración, diagnóstico, auditoría y
-mantenimiento Linux. Su autonomía operativa reside en Python y en políticas explícitas:
-puede seleccionar comprobaciones e investigar dentro de un alcance autorizado. El modelo
-local es una interfaz opcional de explicación y conversación; nunca es una autoridad
-administrativa ni una fuente de hechos verificados.
+AsistenteLocal es una aplicación local de administración, diagnóstico, auditoría y mantenimiento Linux. Su autonomía operativa reside en Python y en políticas explícitas: puede seleccionar comprobaciones e investigar dentro de un alcance autorizado. El modelo local es una interfaz opcional de explicación y conversación; nunca es una autoridad administrativa ni una fuente de hechos verificados.
 
-El núcleo determinista funciona sin LM Studio, GPT-OSS, Codex, VS Code ni Internet.
-Las auditorías y los planes son de solo lectura. Las rutas administrativas APT están
-separadas, requieren autorización específica y no forman parte del arranque habitual.
+El núcleo determinista funciona sin LM Studio, GPT-OSS, Codex, VS Code ni Internet. Las auditorías y los planes son de solo lectura. Las rutas administrativas APT están separadas, requieren autorización específica y no forman parte del arranque habitual.
 
-**Estado a 9 de noviembre de 2026:** entrega publicada en la rama `main` de
-onmyodo78/AsistenteLocal mediante el commit
-`9070eae7040be3a961d0852d5ee25d55775738f1`, por avance rápido y sin sobrescribir
-el historial anterior. No se han creado etiquetas de versión ni GitHub Releases.
-La validación de lectura corresponde a Debian 13, con comprobaciones nativas
-adicionales en Fedora 45. Las operaciones administrativas APT y la actualización
-integrada DNF5 siguen sin validación real integral; la actualización directa
-exitosa de DNF5 no valida AsistenteLocal. Se mantienen las restricciones y los
-estados conservadores; los avisos de alias persisten con XDG controlado.
-Consultar [ESTADO_VERSION.md](ESTADO_VERSION.md),
-[el inventario de publicación](INVENTARIO_PUBLICACION.md) y
-[el cierre técnico Fedora](CIERRE_TECNICO_FEDORA.md).
+**Estado a 9 de noviembre de 2026:** entrega pública incorporada a la rama `main` de GitHub mediante el commit `9070eae7040be3a961d0852d5ee25d55775738f1`, por avance rápido y sin sobrescribir el historial anterior. No se han creado etiquetas de versión ni GitHub Releases.
+
+El núcleo de lectura está validado en Debian 13, con comprobaciones nativas adicionales en Fedora 45. Las operaciones administrativas APT y la actualización integrada DNF5 siguen sin validación real integral; la actualización directa exitosa de DNF5 no valida AsistenteLocal. Se mantienen las restricciones y los estados conservadores; los avisos de alias persisten con XDG controlado.
+
+Consultar [ESTADO_VERSION.md](ESTADO_VERSION.md), [el inventario de publicación](INVENTARIO_PUBLICACION.md) y [el cierre técnico Fedora](CIERRE_TECNICO_FEDORA.md).
 
 ## Autonomía y autoridad
 
