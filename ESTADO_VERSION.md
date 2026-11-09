@@ -1,8 +1,12 @@
-# Estado de la entrega local
+# Estado de la entrega pública
 
-Fecha de revisión: 9 de noviembre de 2026. No se ha creado una publicación, tag,
-commit ni selección en el índice Git. Este documento describe el árbol de trabajo
-validado; no acredita el contenido actual de GitHub.
+Fecha de revisión: 9 de noviembre de 2026.
+
+La entrega de AsistenteLocal Python se ha incorporado a la rama `main` del repositorio público [onmyodo78/AsistenteLocal](https://github.com/onmyodo78/AsistenteLocal) mediante el commit `9070eae7040be3a961d0852d5ee25d55775738f1`.
+
+La publicación se realizó mediante un avance rápido (*fast-forward*), sin sobrescribir el historial anterior. No se han creado etiquetas de versión ni GitHub Releases.
+
+Este documento describe las capacidades, pruebas y limitaciones técnicas de la entrega publicada. La validación de lectura corresponde a Debian 13, con comprobaciones nativas adicionales en Fedora 45. Las operaciones administrativas APT y DNF5 mantienen las restricciones y los límites de validación indicados a continuación.
 
 ## Estado Fedora vigente
 
@@ -80,12 +84,9 @@ No constituye una garantía de latencia: el contexto y la carga pueden provocar 
 
 ## Publicación y privacidad
 
-El manifiesto [PUBLICACION_ARCHIVOS.txt](PUBLICACION_ARCHIVOS.txt) delimita la
-entrega propuesta. Revisar [INVENTARIO_PUBLICACION.md](INVENTARIO_PUBLICACION.md)
-antes de seleccionar archivos en Git. Los registros reales, la copia privada del
-mantenimiento y los respaldos permanecen excluidos. No publicar esos registros.
+El manifiesto [PUBLICACION_ARCHIVOS.txt](PUBLICACION_ARCHIVOS.txt) identifica los archivos seleccionados para la entrega pública. La revisión de privacidad y la validación del conjunto publicado se documentan en [INVENTARIO_PUBLICACION.md](INVENTARIO_PUBLICACION.md).
 
-Ampliación de esta entrega: [auditoría semanal y mantenimiento independiente](AUDITORIA_SEMANAL.md). La ampliación incorpora doce pruebas de casos nuevos; se conserva la referencia original de 786 pruebas.
+Los registros reales, los respaldos y la documentación privada de mantenimiento permanecen excluidos del repositorio. Los informes factuales pueden contener información sensible del sistema y no deben publicarse sin revisión específica.
 
 Comprobaciones reales posteriores y limitaciones: [VALIDACION_INTEGRACION_DEBIAN.md](VALIDACION_INTEGRACION_DEBIAN.md).
 

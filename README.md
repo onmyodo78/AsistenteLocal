@@ -10,14 +10,18 @@ El núcleo determinista funciona sin LM Studio, GPT-OSS, Codex, VS Code ni Inter
 Las auditorías y los planes son de solo lectura. Las rutas administrativas APT están
 separadas, requieren autorización específica y no forman parte del arranque habitual.
 
-**Estado a 9 de noviembre de 2026:** cierre local validado para el uso de lectura en
-Debian 13; cambios aún pendientes de incorporar a Git y publicar. No hay un tag ni una
-versión publicada creados por este cierre. Consultar [ESTADO_VERSION.md](ESTADO_VERSION.md)
-y [el inventario de publicación](INVENTARIO_PUBLICACION.md). En Fedora 45 se han
-comprobado lecturas nativas; la actualización directa mediante DNF5 funcionó según
-el usuario, pero la actualización integrada de AsistenteLocal sigue sin validación
-completa. La corrección parcial de argumentos está en fuentes; los avisos de alias
-persisten con XDG controlado. Véase el [cierre técnico Fedora](CIERRE_TECNICO_FEDORA.md).
+**Estado a 9 de noviembre de 2026:** entrega publicada en la rama `main` de
+onmyodo78/AsistenteLocal mediante el commit
+`9070eae7040be3a961d0852d5ee25d55775738f1`, por avance rápido y sin sobrescribir
+el historial anterior. No se han creado etiquetas de versión ni GitHub Releases.
+La validación de lectura corresponde a Debian 13, con comprobaciones nativas
+adicionales en Fedora 45. Las operaciones administrativas APT y la actualización
+integrada DNF5 siguen sin validación real integral; la actualización directa
+exitosa de DNF5 no valida AsistenteLocal. Se mantienen las restricciones y los
+estados conservadores; los avisos de alias persisten con XDG controlado.
+Consultar [ESTADO_VERSION.md](ESTADO_VERSION.md),
+[el inventario de publicación](INVENTARIO_PUBLICACION.md) y
+[el cierre técnico Fedora](CIERRE_TECNICO_FEDORA.md).
 
 ## Autonomía y autoridad
 
