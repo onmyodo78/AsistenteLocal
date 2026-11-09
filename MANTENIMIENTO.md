@@ -32,20 +32,17 @@ información local: intérprete, distribución, herramientas opcionales y límit
 de aislamiento. Distinguir compatibilidad revisada de compatibilidad demostrada
 mediante ejecución real. No modificar el entorno para completar una comprobación.
 
-Tras revisar su alcance, puede ejecutarse la selección limitada de pruebas
-simuladas documentada en el README, desde la raíz del proyecto:
+Tras revisar su alcance, ejecutar la regresión pública desde la raíz:
 
 ```sh
-PYTHONPATH=tests ASISTENTE_PRUEBAS_REALES=0 python3 -B -W error::ResourceWarning -m unittest test_entorno test_infraestructura_integracion test_finalizacion_general test_estabilizacion_debian -v
+/usr/bin/python3 -B -W error::ResourceWarning tests/ejecutar_regresion_completa.py
 ```
 
-Registrar el resultado observado, sin reutilizar recuentos históricos como si
-fueran actuales. Esta selección no reproduce la batería histórica completa.
-Revisar de nuevo las pruebas si han cambiado antes de ejecutarlas.
-`ASISTENTE_PRUEBAS_REALES=0` no impide todos los procesos reales del conjunto de
-pruebas. No sustituir la selección por un descubrimiento general. Las pruebas de
-integración, APT real, aislamiento real o LM Studio requieren revisión y
-autorización separadas; no forman parte de la rutina semanal predeterminada.
+El corredor enumera pruebas concretas y desactiva las integraciones optativas.
+No sustituirlo por descubrimiento general de prototipos locales. Registrar casos
+superados, omitidos y fallidos; las comprobaciones reales requieren revisión
+separada. El corredor de referencia sigue disponible en
+`tests/ejecutar_regresion_motor.py`.
 
 ## 3. Revisar seguridad y privacidad
 

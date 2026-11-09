@@ -13,7 +13,7 @@ import sys
 ERROR_AISLAMIENTO = 78
 
 
-def restringir():
+def restringir(*, temporal_fd=None):
     if sys.platform != 'linux' or os.uname().machine != 'x86_64':
         raise OSError('aislamiento no disponible')
     libc = ctypes.CDLL(None, use_errno=True)
@@ -33,6 +33,21 @@ def restringir():
     if fd < 0:
         raise OSError('Landlock ruleset')
     try:
+        if temporal_fd is not None:
+            # Uso exclusivo del trabajador de mantenimiento: scratch privado,
+            # nunca bases de paquetes, índices ni configuración. Las auditorías
+            # existentes no pasan este descriptor y siguen sin rutas escribibles.
+            import stat
+            st = os.fstat(temporal_fd)
+            if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.geteuid() or stat.S_IMODE(st.st_mode) != 0o700:
+                raise OSError('temporal no privado')
+            class PathBeneath(ctypes.Structure):
+                _pack_ = 1
+                _fields_ = [('allowed_access', ctypes.c_uint64), ('parent_fd', ctypes.c_int)]
+            acceso = (1 << 1) | (1 << 5) | (1 << 8) | (1 << 14)
+            regla = PathBeneath(acceso, temporal_fd)
+            if libc.syscall(445, fd, 1, ctypes.byref(regla), 0) != 0:
+                raise OSError('Landlock temporal')
         if libc.syscall(446, fd, 0) != 0:  # restrict_self: ninguna ruta escribible
             raise OSError('Landlock restrict_self')
     finally:
@@ -67,7 +82,8 @@ def restringir():
     if libc.prctl(22, 2, ctypes.byref(programa), 0, 0) != 0:
         raise OSError('seccomp')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
+    limite_archivo = 0 if temporal_fd is None else 64 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_FSIZE, (limite_archivo, limite_archivo))
     resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
     resource.setrlimit(resource.RLIMIT_CPU, (10, 11))
 

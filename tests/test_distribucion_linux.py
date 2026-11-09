@@ -7,6 +7,33 @@ import distribucion_linux as distro
 
 
 class Deteccion(unittest.TestCase):
+    def test_fedora_45_codename_opcional(self):
+        for campo in ('', 'VERSION_CODENAME=""\n', "VERSION_CODENAME=''\n",
+                      'VERSION_CODENAME=\n'):
+            with self.subTest(campo=campo):
+                self.assertEqual(distro.detectar_distribucion(
+                    contenido='ID=fedora\nVERSION_ID="45"\n' + campo),
+                    dict(estado='soportado', id='fedora', version_id='45',
+                         version_codename=None, origen='contenido', motivo=None))
+
+    def test_fedora_45_codename_invalido(self):
+        for valor in ('"Fedora"', '"con espacios"', '"   "', '"$(echo fedora)"',
+                      '"a/b"', '"sin cierre', '"a""b"'):
+            with self.subTest(valor=valor):
+                datos = distro.detectar_distribucion(contenido=
+                    'ID=fedora\nVERSION_ID=45\nVERSION_CODENAME=' + valor)
+                self.assertEqual(datos['estado'], 'no_soportado')
+                self.assertEqual(datos['motivo'], 'datos_invalidos')
+
+    def test_codename_vacio_no_admite_id_ni_version_invalidos(self):
+        for campos in ('ID=""\nVERSION_ID=45', 'ID=Fedora\nVERSION_ID=45',
+                       'ID=fedora\nVERSION_ID=""', 'ID=fedora\nVERSION_ID=45beta'):
+            with self.subTest(campos=campos):
+                datos = distro.detectar_distribucion(
+                    contenido=campos + '\nVERSION_CODENAME=""\n')
+                self.assertEqual(datos['estado'], 'no_soportado')
+                self.assertEqual(datos['motivo'], 'datos_invalidos')
+
     def test_fedora_y_debian_13(self):
         for texto, ident, version, codename in [
             ('NAME="Fedora Linux"\nID=fedora\nVERSION_ID=44\n', 'fedora', '44', None),

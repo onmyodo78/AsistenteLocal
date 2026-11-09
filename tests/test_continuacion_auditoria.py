@@ -46,8 +46,9 @@ class ContinuacionAuditoria(unittest.TestCase):
             self.assertNotIn('tools', cuerpos[1])
         else:
             self.assertEqual(cuerpos[0]['tools'], cuerpos[1]['tools'])
-        for c in abrir.call_args_list:
-            self.assertTrue(0 < c.kwargs['timeout'] <= app.MAX_MODEL_SECONDS)
+        for i,c in enumerate(abrir.call_args_list):
+            limite = app.MAX_INTERPRETATION_SECONDS if i==1 and nombre=='auditoria_seguridad' else app.MAX_MODEL_SECONDS
+            self.assertTrue(0 < c.kwargs['timeout'] <= limite)
         return salida.getvalue(), cuerpos[1]
 
     def test_exito_conserva_resultado_y_parametros(self):

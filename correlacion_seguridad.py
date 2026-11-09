@@ -7,11 +7,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from auditoria_seguridad import AVISO_LOG_DNF, sin_duplicados
+from auditoria_seguridad import AVISO_LOG_DNF, sin_duplicados, token
 
 KEV_URL = 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json'
 DNF_DOC = 'https://dnf5.readthedocs.io/en/stable/commands/advisory.8.html'
-COMANDO = ('dnf5', '--cacheonly', '--no-plugins', '--setopt=logdir=/proc/self/fd',
+COMANDO = ('dnf5', '-q', '--cacheonly', '--no-plugins', '--setopt=logdir=/proc/self/fd',
            'advisory', 'info', '--security', '--available', '--json')
 CVE = re.compile(r'CVE-\d{4}-\d{4,}\Z')
 NEVRA = re.compile(r'(.+)-(\d+:)?([^-]+)-([^-]+)\.([^.]+)\Z')
@@ -65,13 +65,20 @@ def correlacionar(local, detalles, kev_ids, comparar=None):
     for aviso in filas:
         if aviso['Type'] != 'security' or not isinstance(aviso['Name'], str):
             raise ValueError('aviso inválido')
+        token(aviso['Name'])
+        if not isinstance(aviso['references'], list) or not isinstance(aviso['collections'], dict):
+            raise ValueError('colecciones inválidas')
         cves = []
         for ref in aviso['references']:
             if ref['Type'].lower() == 'cve':
                 if not CVE.fullmatch(ref['Id']):
                     raise ValueError('CVE inválido')
                 cves.append(ref['Id'])
-        for nevra in aviso['collections'].get('packages', []):
+        paquetes = aviso['collections'].get('packages', [])
+        if not isinstance(paquetes, list):
+            raise ValueError('paquetes inválidos')
+        for nevra in paquetes:
+            token(nevra)
             match = NEVRA.fullmatch(nevra)
             if not match:
                 raise ValueError('NEVRA inválido')
@@ -102,20 +109,42 @@ def consultar(consultar_local, ejecutar, autorizado, deadline):
                'limitaciones': ['Solo caché DNF5; cobertura y antigüedad desconocidas.',
                                 'KEV indica explotación conocida del CVE, no vulnerabilidad del paquete.',
                                 'Versión correctiva alcanzada no demuestra activación del kernel ni reinicio de servicios.',
+                                'Inventario incompleto, avisos pendientes no disponibles o comparación RPM no determinada mantienen el cierre parcial.',
                                 'No determinado y ausencia en KEV no equivalen a ausencia de vulnerabilidades.']}
+    motivo = 'detalle_no_disponible'
+    informe['diagnostico_detalle'] = dict(codigo=None, stdout_bytes=0, stderr_bytes=0,
+                                         truncado=False, motivo=None)
     try:
         restante = deadline - time.monotonic()
         if restante <= 0:
             raise TimeoutError()
         comando = [sys.executable, '-B', str(Path(__file__).resolve()), '--detalle-local']
         codigo, texto, errores, truncado = ejecutar(comando, min(15, restante))
+        informe['diagnostico_detalle'].update(codigo=codigo,
+            stdout_bytes=len(texto.encode('utf-8')), stderr_bytes=len(errores.encode('utf-8')),
+            truncado=truncado)
+        motivo = ('salida_truncada' if truncado else
+                  'aislamiento_no_disponible' if codigo == 78 else
+                  'dependencia_ausente' if codigo == 69 else
+                  'error_comando' if codigo else 'avisos_no_interpretados')
         if codigo or truncado or errores not in ('', AVISO_LOG_DNF):
             raise ValueError('detalle_no_disponible')
         # Validar evidencia local antes de consultar la fuente externa.
+        motivo = 'formato_invalido'
         informe['resultados'] = correlacionar(local, texto, None)
         informe['detalle_dnf5'] = 'correcto'
-    except (OSError, TimeoutError, ValueError, KeyError, TypeError, AttributeError, RecursionError):
+    except TimeoutError:
         informe['detalle_dnf5'] = 'no_disponible_o_formato_invalido'
+        informe['diagnostico_detalle']['motivo'] = 'tiempo_agotado'
+    except OSError:
+        informe['detalle_dnf5'] = 'no_disponible_o_formato_invalido'
+        informe['diagnostico_detalle']['motivo'] = 'error_sistema'
+    except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
+        informe['detalle_dnf5'] = 'no_disponible_o_formato_invalido'
+        informe['diagnostico_detalle']['motivo'] = motivo
+    informe['estado_adquisicion'] = ('completo' if informe['detalle_dnf5'] == 'correcto'
+        and local['inventario_completo'] and local['avisos_pendientes'] is not None
+        and not any(f['estado_local'] == 'no_determinado' for f in informe['resultados']) else 'parcial')
     restante = deadline - time.monotonic()
     if restante > 0:
         estado, ids = consultar_kev(autorizado, min(10, restante))
@@ -125,7 +154,8 @@ def consultar(consultar_local, ejecutar, autorizado, deadline):
     for fila in informe['resultados']:
         for cve in fila['cves']:
             cve['en_kev'] = None if ids is None else cve['id'] in ids
-    informe['total_resultados'] = len(informe['resultados'])
+    informe['total_resultados'] = (len(informe['resultados'])
+        if informe['detalle_dnf5'] == 'correcto' and local['inventario_completo'] else None)
     return informe
 
 

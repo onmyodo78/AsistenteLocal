@@ -167,7 +167,11 @@ class Auditoria(unittest.TestCase):
         self.assertNotIn('--setopt=logfilelevel=0', audit.DNF)
         self.assertIn('--setopt=logdir=/proc/self/fd', audit.DNF)
         for codigo, stderr, esperado in [(0, audit.AVISO_LOG_DNF, 'correcta'),
+                (0, '', 'correcta'),
+                (0, 'Updating and loading repositories:\nRepositories loaded.\n', 'avisos_no_interpretados'),
                 (0, 'otro aviso', 'avisos_no_interpretados'),
+                (1, 'Error: repository unavailable', 'error_comando'),
+                (100, '', 'error_comando'),
                 (78, '', 'aislamiento_no_disponible'), (69, '', 'ejecutable_ausente')]:
             with patch.object(app, 'consultar_inventario', return_value=dict(estado='error',codigo=1,registros=[])), \
                  patch.object(app, 'ejecutar_comando', return_value=(codigo,'[]',stderr,False)) as run, \

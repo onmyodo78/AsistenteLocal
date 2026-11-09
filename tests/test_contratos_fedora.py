@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import time
+import types
 import unittest
 from unittest.mock import Mock, patch
 
@@ -12,7 +13,7 @@ import auditoria_seguridad as audit
 import correlacion_seguridad as corr
 
 FORMATO = '%{NAME}\t%{EPOCHNUM}\t%{VERSION}\t%{RELEASE}\t%{ARCH}\n'
-DNF = ('dnf', '--cacheonly', '--no-plugins', '--setopt=logdir=/proc/self/fd',
+DNF = ('dnf', '-q', '--cacheonly', '--no-plugins', '--setopt=logdir=/proc/self/fd',
        'updateinfo', 'list', '--security', '--json')
 NEVRA = 'ejemplo-1:2.0-1.fc44.x86_64'
 RPM = 'kernel-core\t0\t6.18.2\t100.fc44\tx86_64\nejemplo\t1\t1.0\t1.fc44\tx86_64\n'
@@ -46,7 +47,7 @@ class ContratosFedora(unittest.TestCase):
             ('pendientes',DNF+('--available',)), ('instalados',DNF+('--installed',)))
         self.assertEqual(audit.FORMATO_RPM, FORMATO)
         self.assertEqual(audit.CONSULTAS, consultas)
-        self.assertEqual(corr.COMANDO, ('dnf5','--cacheonly','--no-plugins',
+        self.assertEqual(corr.COMANDO, ('dnf5','-q','--cacheonly','--no-plugins',
             '--setopt=logdir=/proc/self/fd','advisory','info','--security','--available','--json'))
         self.assertEqual(app.TOOLS['auditoria_seguridad']['commands'], [list(c) for _,c in consultas])
         self.assertEqual(app.TOOLS['correlacion_seguridad']['commands'],
@@ -123,11 +124,73 @@ class ContratosFedora(unittest.TestCase):
         self.assertEqual(comando,[sys.executable,'-B',str(Path(corr.__file__).resolve()),'--detalle-local'])
         self.assertTrue(0 < timeout <= 15)
         self.assertEqual(set(datos),{'herramienta','fuentes_locales','inventario_completo',
-            'resultados','referencias','alcance','limitaciones','detalle_dnf5','cisa_kev','total_resultados'})
+            'resultados','referencias','alcance','limitaciones','detalle_dnf5','cisa_kev','total_resultados',
+            'diagnostico_detalle','estado_adquisicion'})
         self.assertEqual(datos['cisa_kev'],{'estado':'no_autorizada'})
         self.assertEqual(datos['detalle_dnf5'],'correcto')
         self.assertEqual(datos['total_resultados'],1)
+        self.assertEqual(datos['estado_adquisicion'],'parcial')  # sin binding RPM
         self.assertNotIn('inventario_rpm',datos)
+
+    def test_diagnostico_detalle_sin_exponer_salidas(self):
+        for retorno, motivo in [
+            ((78,'','',False),'aislamiento_no_disponible'),
+            ((69,'','',False),'dependencia_ausente'),
+            ((1,'','',False),'error_comando'),
+            ((1,'','Error: repository unavailable',False),'error_comando'),
+            ((100,'[]','',False),'error_comando'),
+            ((0,'[]','aviso privado',False),'avisos_no_interpretados'),
+            ((0,'[]','Updating and loading repositories:\nRepositories loaded.\n',False),
+             'avisos_no_interpretados'),
+            ((0,'[','',True),'salida_truncada'),
+            ((0,'{}','',False),'formato_invalido')]:
+            with self.subTest(motivo=motivo):
+                datos = corr.consultar(lambda fin:local(),Mock(return_value=retorno),False,time.monotonic()+30)
+                self.assertEqual(datos['diagnostico_detalle']['motivo'],motivo)
+                self.assertEqual(datos['estado_adquisicion'],'parcial')
+                self.assertIsNone(datos['total_resultados'])
+                self.assertNotIn('privado',json.dumps(datos))
+
+    def test_vacio_valido_no_equivale_a_fuente_ausente(self):
+        for completo in (True, False):
+            datos_local = local()
+            datos_local['inventario_completo'] = completo
+            if not completo:
+                datos_local['inventario_rpm'] = None
+            datos = corr.consultar(lambda fin:datos_local,
+                Mock(return_value=(0,'[]',audit.AVISO_LOG_DNF,False)),False,time.monotonic()+30)
+            self.assertEqual(datos['detalle_dnf5'],'correcto')
+            self.assertEqual(datos['estado_adquisicion'],'completo' if completo else 'parcial')
+            self.assertEqual(datos['total_resultados'],0 if completo else None)
+
+    def test_cierre_completo_con_comparacion_rpm_y_fuentes_completas(self):
+        with patch.dict(sys.modules,{'rpm':types.SimpleNamespace(labelCompare=lambda a,b:-1)}):
+            datos = corr.consultar(lambda fin:local(),
+                Mock(return_value=(0,detalles(),'',False)),False,time.monotonic()+30)
+        self.assertEqual(datos['estado_adquisicion'],'completo')
+        self.assertEqual(datos['resultados'][0]['estado_local'],'correccion_pendiente_confirmada')
+
+    def test_diagnostico_excepciones(self):
+        for error, motivo in ((TimeoutError(),'tiempo_agotado'),(OSError(),'error_sistema')):
+            datos = corr.consultar(lambda fin:local(),Mock(side_effect=error),False,time.monotonic()+30)
+            self.assertEqual(datos['diagnostico_detalle']['motivo'],motivo)
+            self.assertIsNone(datos['total_resultados'])
+
+    def test_relacion_por_nombre_arquitectura_y_aviso_pendiente(self):
+        datos_local = local()
+        datos_local['inventario_rpm'][0]['arquitectura'] = 'aarch64'
+        self.assertEqual(corr.correlacionar(datos_local,detalles(),None,lambda a,b:-1),[])
+        datos_local = local()
+        datos_local['avisos_pendientes'] = None
+        self.assertEqual(corr.correlacionar(datos_local,detalles(),None,lambda a,b:-1)[0]
+                         ['estado_local'],'no_determinado')
+
+    def test_colecciones_invalidas_no_se_aceptan_como_vacias(self):
+        for coleccion in ([], None, {'packages':{}}, {'packages':'texto'}):
+            filas = json.loads(detalles())
+            filas[0]['collections'] = coleccion
+            with self.subTest(coleccion=coleccion), self.assertRaises(ValueError):
+                corr.correlacionar(local(),json.dumps(filas),None,lambda a,b:-1)
 
     def test_detalle_invalido_y_presentacion(self):
         for retorno in ((1,detalles(),'',False),(0,detalles(),'aviso',False),

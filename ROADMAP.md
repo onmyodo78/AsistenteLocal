@@ -1,60 +1,24 @@
 # Hoja de ruta
 
-Este documento recoge propuestas futuras, sin calendario ni compromiso de
-versión. No habilita operaciones ni autoriza su ejecución.
+El estado comprobado está en [ESTADO_VERSION.md](ESTADO_VERSION.md). Esta lista
+recoge trabajo futuro; no activa funciones ni autoriza operaciones administrativas.
 
-## Estado actual
+1. Revisar y publicar la entrega local, conservando pruebas y exclusiones privadas.
+2. Validar en un entorno controlado el despliegue y la ejecución del helper APT;
+   no confundir el mantenimiento manual de Debian con validación de ese ejecutor.
+3. Corregir por separado la proyección anterior ante memoria nula y reforzar la
+   evaluación semántica de las explicaciones, manteniendo Python como autoridad.
+4. Conservar la evidencia de lectura Fedora 45 ya obtenida y completar por separado
+   la preparación estricta DNF5 y la validación de la actualización interactiva.
+   Resolver los avisos de alias sin debilitar el aislamiento ni admitir stderr.
+   La ruta interactiva está implementada y es experimental; su validación integral,
+   cualquier redespliegue y la revisión del resultado histórico desconocido siguen
+   pendientes de procedimientos y autorizaciones independientes.
+5. Diseñar correlación CVE Debian con versiones Debian y correcciones retroportadas,
+   fuentes oficiales y política explícita de acceso externo.
+6. Evaluar adaptadores de proveedores como Ollama, notificaciones y políticas de delegación restringida. No implementados.
+   La auditoría semanal con plantillas systemd de usuario ya está implementada,
+   con validación real de programación pendiente.
 
-AsistenteLocal mantiene su alcance de consultas de solo lectura. En Debian 13
-existe inventario dpkg y una adquisición experimental de candidatas APT desde
-información local. La adquisición APT no tiene validación real satisfactoria bajo
-las protecciones actuales y puede fallar o ser parcial. No implementa simulación,
-selección para instalación ni ejecución de actualizaciones. Tampoco implementa
-correlación CVE Debian. Un resultado desconocido no significa ausencia de
-actualizaciones o vulnerabilidades. El [README](README.md) detalla estos límites.
-
-## Objetivos generales de extensibilidad
-
-Se propone mantener una única aplicación local, auditable y adaptable, con
-herramientas y permisos definidos de forma explícita. La selección configurable
-de proveedores de modelos locales compatibles, como Ollama además de LM Studio,
-es un objetivo futuro: actualmente la conversación utiliza LM Studio y no hay
-integración con Ollama. Cada integración necesitará verificación propia y deberá
-conservar los controles de privacidad y autorización, sin depender de VS Code o
-Codex para el uso cotidiano. Las conexiones externas serán opcionales y estarán
-bajo control del usuario.
-
-## Capacidades futuras: actualización supervisada
-
-Todas las capacidades siguientes están pendientes y no disponibles actualmente:
-
-- Consulta y clasificación de actualizaciones APT con evidencia de la fuente,
-  antigüedad de los índices, estados parciales y limitaciones. No atribuir
-  correcciones de seguridad sin evidencia suficiente.
-- Selección de paquetes y exclusión temporal para una operación concreta, sin
-  convertirla automáticamente en una retención persistente del sistema.
-- Simulación obligatoria antes de cualquier actualización, mostrando también
-  dependencias, eliminaciones y otros cambios propuestos. Simular no garantiza
-  que una ejecución posterior termine correctamente.
-- Ejecución únicamente con autorización explícita del usuario sobre el plan
-  concreto. Los cambios del plan exigirán nueva revisión y autorización.
-- Autenticación administrativa mediante mecanismos nativos del sistema, sin
-  almacenar contraseñas ni conceder privilegios al modelo.
-- Verificación posterior de cada operación, incluidas las fallidas o
-  interrumpidas, diferenciando resultado confirmado, parcial y desconocido.
-- Posible interfaz gráfica opcional, conservando la CLI y los mismos controles
-  de autorización, seguridad y privacidad.
-- Revisión periódica de dependencias, compatibilidad y seguridad siguiendo el
-  [procedimiento manual recomendado](MANTENIMIENTO.md).
-
-## Condiciones para avanzar
-
-La lectura seguirá siendo el modo predeterminado. El modelo y el ejecutor
-permanecerán separados; la IA no podrá suministrar comandos arbitrarios. Las
-protecciones actuales no se relajarán como alternativa silenciosa ante un fallo.
-Las nuevas capacidades requerirán diseño, pruebas y validación independientes
-antes de documentarse como disponibles. Se minimizarán dependencias adicionales.
-
-Las consultas externas y las modificaciones del sistema seguirán bajo control
-del usuario. Esta hoja de ruta no configura automatizaciones, servicios externos
-de mantenimiento ni actualizaciones automáticas.
+Cualquier ampliación requiere revisión independiente. Se conservan mínimos
+privilegios, límites, autorizaciones y ausencia de comandos libres del modelo.

@@ -317,5 +317,6 @@ class InterfacesAplicacion(unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()) as salida:
             app.preguntar('disco')
         self.assertNotIn('Hechos de interfaces_red', salida.getvalue())
-        self.assertNotIn('Interpretación del modelo', salida.getvalue())
+        self.assertIn('Interpretación del modelo', salida.getvalue())
+        self.assertIn('Herramienta | Informe disco', salida.getvalue())
         self.assertIn('Asistente: Fin', salida.getvalue())

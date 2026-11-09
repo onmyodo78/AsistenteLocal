@@ -18,7 +18,8 @@ def detectar_distribucion(*, contenido=None, rutas=None):
     """Devuelve estado, ID, VERSION_ID, VERSION_CODENAME, origen y motivo.
 
     No hay fallback por contenido inválido, permisos o distribución desconocida.
-    Los campos ausentes se representan con None. No se evalúan expansiones shell.
+    Los campos ausentes y VERSION_CODENAME vacío se representan con None.
+    No se evalúan expansiones shell.
     """
     resultado = dict(estado='no_soportado', id=None, version_id=None,
                      version_codename=None, origen=None, motivo=None)
@@ -58,7 +59,7 @@ def detectar_distribucion(*, contenido=None, rutas=None):
             campos[match[1]] = valores[0] if valores else ''
         ident = campos.get('ID')
         version = campos.get('VERSION_ID')
-        codename = campos.get('VERSION_CODENAME')
+        codename = campos.get('VERSION_CODENAME') or None
         if not ident or not re.fullmatch(r'[a-z0-9._-]+', ident):
             raise ValueError()
         if version is not None and not re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', version):

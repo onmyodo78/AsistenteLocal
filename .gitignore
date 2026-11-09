@@ -42,3 +42,35 @@ exportaciones/
 /tests/test_observabilidad_policy.py
 /tests/test_policy_temporal.py
 /tests/test_prototipo_tmpfs_privado.py
+
+# Respaldos persistentes previos a cambios; solo locales
+/respaldos_locales/
+
+# Artefactos de validación y empaquetado; nunca incluir datos del anfitrión
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+/build/
+/dist/
+*.swp
+*.swo
+.DS_Store
+
+# Material de autenticación local; las excepciones de fixtures se revisan aparte
+.ssh/
+id_rsa
+id_ed25519
+*.key
+*.pem
+*.p12
+*.pfx
+/credentials.json
+/secrets/
+
+# Diseño inicial y artefactos TTY anteriores: conservar localmente, no publicar
+/PROPUESTA_DNF5.md
+/CORRECCION_TTY_DNF5.md
+/MANIFIESTO_DNF5_TTY.sha256

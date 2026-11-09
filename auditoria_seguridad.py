@@ -9,7 +9,9 @@ import sys
 import time
 
 FORMATO_RPM = '%{NAME}\t%{EPOCHNUM}\t%{VERSION}\t%{RELEASE}\t%{ARCH}\n'
-DNF = ('dnf', '--cacheonly', '--no-plugins', '--setopt=logdir=/proc/self/fd',
+# En Fedora con DNF5, dnf es el alias usado para updateinfo. Quiet elimina
+# mensajes de progreso en origen; no autoriza ignorar stderr residual.
+DNF = ('dnf', '-q', '--cacheonly', '--no-plugins', '--setopt=logdir=/proc/self/fd',
        'updateinfo', 'list', '--security', '--json')
 CONSULTAS = (
     ('uname', ('uname', '-r')),
