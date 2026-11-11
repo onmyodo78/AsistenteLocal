@@ -219,3 +219,35 @@ relaciona causalmente con el final vacío sin comprobar la ruta activa del servi
 Validación real posterior autorizada: [resultados A/B y petición mixta](VALIDACION_GPTOSS_API_LOCAL.md).
 Incluye los límites observados de latencia e interpretación, sin cambiar el
 validador ni aceptar contenido final vacío.
+
+## Revisión conversacional del PR #1
+
+Se reprodujeron con dobles tres defectos: la comparación «qué diferencia hay
+entre RAM y swap» no llegaba al modelo (también se perdía la explicación en
+solicitudes mixtas); un saludo separado generaba una limitación espuria; y una
+relativa como «instala un paquete que es necesario» se confundía con una pregunta
+conceptual. Esta última no ejecutaba herramientas, pero enviaba la orden al modelo.
+Los otros cinco ejemplos conceptuales solicitados ya obtenían explicación, aunque
+el ejemplo con saludo producía el aviso mencionado.
+
+La clasificación conceptual exige ahora un introductor explicativo al comienzo
+de la cláusula, con cortesía acotada y variantes explícitas de comparación. No
+depende del objeto consultado ni convierte todo texto desconocido en conversación.
+La misma comprobación se aplica a la clasificación conceptual de seguridad;
+se conservan sus reglas de adquisición y reutilización. Saludos y «por favor»
+separados se ignoran sin cambiar el alcance de las acciones o negaciones.
+
+Cuatro regresiones nuevas cubren las seis preguntas propuestas, teoría sobre
+instalar/borrar, órdenes con relativas, negaciones de explicación, texto ambiguo,
+mezclas con exclusión de VPN/sudo y una orden bloqueada con explicación independiente.
+Comprueban la entrada pública, pregunta íntegra, modelo sin herramientas y ausencia
+de ejecuciones; el bloqueo de IP pública sigue cubierto por la regresión existente.
+No se cambian `AsistenteLocal.py`, el payload de explicación, el validador, límites,
+autorizaciones, destinos ni persistencia. No se necesitan nuevas pruebas reales de
+LM Studio para estos defectos de clasificación; las pruebas usan transporte simulado.
+
+Validación de esta revisión: 73 pruebas de operaciones y planificación de seguridad
+satisfactorias; suite completa de 1.061 pruebas sin fallos, con 12 omitidas.
+La gramática sigue siendo conservadora y no comprende todas las formas del español;
+una paráfrasis no reconocida puede requerir reformulación. Continúan vigentes las
+limitaciones de latencia, interpretación, IP pública independiente e historial.

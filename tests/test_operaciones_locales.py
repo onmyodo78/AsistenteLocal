@@ -277,6 +277,93 @@ class Integracion(unittest.TestCase):
 class PreservacionIntencion(unittest.TestCase):
     setUp = Integracion.setUp
 
+    def test_conceptuales_generales_sin_adquisiciones(self):
+        preguntas = (
+            '¿Qué diferencia hay entre RAM y swap?',
+            '¿Por qué Linux utiliza memoria caché?',
+            'Explícame qué es un proceso zombi',
+            '¿Qué significa que un servicio esté enmascarado?',
+            '¿Cómo funciona el planificador de procesos de Linux?',
+            'Hola, ¿puedes explicarme qué es Debian?',
+            '¿Qué diferencia hay entre instalar y descargar paquetes?',
+            '¿Qué significa borrar los registros del sistema?',
+        )
+        for pregunta in preguntas:
+            with self.subTest(pregunta=pregunta):
+                self.modelo.reset_mock()
+                self.preparar_modelo('Explicación conceptual general.')
+                self.salida.seek(0)
+                self.salida.truncate()
+                p = planificar(pregunta)
+                self.assertEqual(p.tipo, 'conceptual')
+                self.assertFalse(p.nombres)
+                self.assertFalse(p.pendientes)
+                with patch.object(app, 'ejecutar_comando') as ejecutar, \
+                     patch.object(app, 'ejecutar_consulta') as consulta:
+                    app.preguntar(pregunta)
+                ejecutar.assert_not_called()
+                consulta.assert_not_called()
+                self.modelo.assert_called_once()
+                self.assertEqual(self.modelo.call_args.args[0][-1],
+                                 {'role': 'user', 'content': pregunta})
+                self.assertEqual(self.modelo.call_args.kwargs,
+                                 dict(permitir_herramientas=False, omitir_tools=True, solo_explicacion=True))
+                self.assertIn('Explicación conceptual general.', self.salida.getvalue())
+
+    def test_ordenes_no_son_preguntas_por_contener_que_es(self):
+        for pregunta in ('Ejecuta un comando que no tienes registrado',
+                         'Instala un paquete', 'Borra los registros del sistema',
+                         'Instala un paquete que es necesario',
+                         'Instala paquetes que son necesarios',
+                         'Ejecuta un comando que significa borrar registros',
+                         'Por favor, instala un paquete que es necesario',
+                         'No me expliques qué es Debian',
+                         'No expliques qué diferencia hay entre RAM y swap',
+                         'Tengo una duda sobre Linux'):
+            with self.subTest(pregunta=pregunta), \
+                 patch.object(app, 'ejecutar_comando') as ejecutar, \
+                 patch.object(app, 'ejecutar_consulta') as consulta:
+                self.modelo.reset_mock()
+                p = planificar(pregunta)
+                self.assertFalse(p.nombres)
+                self.assertFalse(p.conceptual or p.explicar)
+                app.preguntar(pregunta)
+                self.modelo.assert_not_called()
+                ejecutar.assert_not_called()
+                consulta.assert_not_called()
+
+    def test_orden_bloqueada_no_cancela_explicacion_independiente(self):
+        pregunta = 'Borra los registros del sistema y explícame qué es un proceso zombi'
+        self.preparar_modelo('Un proceso zombi ha terminado y conserva una entrada hasta ser recogido.')
+        with patch.object(app, 'ejecutar_comando') as ejecutar, \
+             patch.object(app, 'ejecutar_consulta') as consulta:
+            app.preguntar(pregunta)
+        ejecutar.assert_not_called()
+        consulta.assert_not_called()
+        self.modelo.assert_called_once()
+        mensajes = self.modelo.call_args.args[0]
+        self.assertEqual(mensajes[-1]['content'], pregunta)
+        self.assertIn('no las repitas ni añadas otras', mensajes[0]['content'])
+        self.assertIn('no inventes datos, comandos, permisos', mensajes[0]['content'])
+        self.assertIn('cambio_fuera_del_alcance_de_lectura', mensajes[0]['content'])
+        self.assertIn('Parte no ejecutada', self.salida.getvalue())
+        self.assertIn('Un proceso zombi', self.salida.getvalue())
+        self.assertFalse(self.modelo.call_args.kwargs['permitir_herramientas'])
+        self.assertTrue(self.modelo.call_args.kwargs['omitir_tools'])
+
+    def test_mixta_con_comparacion_y_exclusion_conserva_intencion(self):
+        pregunta = 'Comprueba memoria y no consultes VPN; ¿qué diferencia hay entre RAM y swap? No utilices sudo'
+        self.preparar_modelo()
+        with patch.object(app, 'consultar_memoria_verificada', return_value=normalizar_memoria(
+                dict(estado='error_lectura', codigo=None, stdout='', avisos=False))) as memoria, \
+             patch.object(app, 'ejecutar_comando') as ejecutar:
+            r = app.preguntar(pregunta)
+        memoria.assert_called_once()
+        ejecutar.assert_not_called()
+        self.modelo.assert_called_once()
+        self.assertEqual([x['operacion'] for x in r], ['memoria'])
+        self.assertEqual(self.modelo.call_args.args[0][-1]['content'], pregunta)
+
     def preparar_modelo(self, texto='La swap complementa la RAM; su ocupación no mide actividad.'):
         self.modelo.side_effect = None
         self.modelo.return_value = {'choices': [{'message': {'role': 'assistant', 'content': texto}}]}

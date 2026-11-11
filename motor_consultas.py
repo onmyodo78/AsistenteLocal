@@ -39,7 +39,7 @@ def _planificar_seguridad(pregunta):
     Una comprobación explícita es nueva; solo las referencias al pasado reutilizan.
     """
     texto = normalizar(pregunta)
-    conceptual = bool(re.search(r'\b(que es|que significa|como funciona|explica que|para que sirve|diferencia entre)\b', texto))
+    conceptual = es_conceptual(texto.strip(' ¿¡'))
     negada = bool(re.search(r'\b(no|sin)\s+(?:\w+\s+){0,2}(ejecut|consult|audit|comprob|correlacion|repit|repet)', texto))
     nueva = bool(re.search(r'\b(nueva|nuevo|actualiza|repite|repetir|otra vez|de nuevo|ahora)\b', texto)) and not negada
     reutilizar = not nueva and bool(re.search(
@@ -78,8 +78,19 @@ TEMAS_LOCALES = {
     'listar_documentos': r'\b(listar_documentos|documentos)\b',
 }
 ACCION = r'\b(analiza|analizar|diagnostica|diagnosticar|realiza|haz|comprueba|comprobar|verifica|verificar|revisa|revisar|consulta|consultar|muestra|muestrame|mostrar|dame|dime|lista|listar|ejecuta|ejecutar)\b'
-CONCEPTO = r'\b(es normal|por que|que implica|que ocurre|que pasa|que ventajas|que riesgos|que relacion|que es|que son|que significa|como funciona|como funcionan|para que sirve|diferencia entre|explica(?:me|ndo)?|para (?:saber|entender|conocer)|que (?:herramientas|comandos|permisos)|(?:es posible|se puede|puedo) (?:comprobar|verificar|consultar|revisar)|como (?:puedo |se puede |debo |podria )?(?:comprobar|verificar|consultar|revisar|ver|saber))\b'
+CONCEPTO = r'\b(es normal|por que|que implica|que ocurre|que pasa|que ventajas|que riesgos|que relacion|que es|que son|que significa|como funciona|como funcionan|para que sirve|diferencia entre|que diferencias? (?:hay )?entre|cual es la diferencia entre|en que se diferencian|explica(?:me|rme|r|ndo)?|para (?:saber|entender|conocer)|que (?:herramientas|comandos|permisos)|(?:es posible|se puede|puedo) (?:comprobar|verificar|consultar|revisar)|como (?:puedo |se puede |debo |podria )?(?:comprobar|verificar|consultar|revisar|ver|saber))\b'
 NEGACION = r'\b(no|sin|nunca|tampoco|excepto|salvo)\b'
+
+
+def es_conceptual(clausula):
+    """Intención explicativa inicial, no una relativa dentro de una orden.
+
+    Solo admite introductores explícitos y cortesía acotada; lo desconocido no
+    se envía por defecto al modelo. Recibe texto normalizado.
+    """
+    return bool(re.match(
+        r'(?:por favor\s+)?(?:(?:me )?(?:puedes|podrias)\s+)?(?:' + CONCEPTO +
+        r'|\b(?:como interpretar|resume|resumeme|dime si)\b)', clausula))
 
 
 TEMAS_ADQUISICION = dict(TEMAS_LOCALES,
@@ -118,6 +129,9 @@ def planificar(pregunta):
         clausula = clausula.strip(' ¿¡')
         if not clausula:
             continue
+        if clausula in ('hola', 'buenos dias', 'buenas tardes', 'por favor'):
+            # Cortesía separada no es una operación pendiente ni cambia el modo.
+            continue
         temas = [n for n, patron in TEMAS_ADQUISICION.items() if re.search(patron, clausula)]
         if 'auditoria_seguridad' in temas and 'sistema' in temas:
             temas.remove('sistema')
@@ -128,7 +142,7 @@ def planificar(pregunta):
                 continue
             modo = 'excluida'
             continue
-        if re.search(CONCEPTO, clausula) or re.search(r'\b(por que|como interpretar|resume|resumeme|dime si)\b', clausula):
+        if es_conceptual(clausula):
             explicar = True
             modo = 'conceptual'
             continue
