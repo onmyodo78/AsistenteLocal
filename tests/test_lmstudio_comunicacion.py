@@ -529,10 +529,21 @@ class CompatibilidadRolesGPTOSS(unittest.TestCase):
         self.assertIn('Swap libre: 2048 B.', render)
         self.assertIn('No propongas elevar privilegios.', render)
 
-    def test_payload_produccion_coincide_con_propuesta_sintetica(self):
+    def test_payload_produccion_conserva_b_y_anade_cautela_memoria(self):
         with patch.object(app, 'seleccionar_backend_seguridad', return_value={'backend': 'debian'}):
             _, _, payload = DiagnosticoExplicacion().ciclo(DiagnosticoExplicacion().respuesta())
-        self.assertEqual(payload, self.fixture('B_system_user.json'))
+        esperado = self.fixture('B_system_user.json')
+        esperado['messages'][0]['content'] = esperado['messages'][0]['content'].replace(
+            'Distingue explicación general, hechos y aspectos no verificables.',
+            'Distingue explicación general, hechos y aspectos no verificables. '
+            'Si solo se pregunta para qué sirve la swap, explica su función sin añadir un diagnóstico '
+            'de suficiencia de RAM. La ocupación de swap no mide actividad de intercambio; '
+            'no afirmes ausencia de actividad actual a partir de una instantánea.')
+        esperado['messages'][0]['content'] = esperado['messages'][0]['content'].replace(
+            'Responde a todas las partes explicativas de la pregunta original. ',
+            'Responde a todas las partes explicativas de la pregunta original. '
+            'Para preguntas conceptuales sencillas, responde en dos o tres frases sin repetir el informe numérico ya mostrado. ')
+        self.assertEqual(payload, esperado)
 
     def test_variantes_propuestas_cambian_una_variable_y_conservan_limites(self):
         b = self.fixture('B_system_user.json')

@@ -215,3 +215,7 @@ Investigación posterior del final vacío: [inspección GPT-OSS y propuestas exa
 aún sin ejecutar](DIAGNOSTICO_GPTOSS_FINAL_VACIO.md). El defecto de roles demostrado
 en la plantilla Jinja se corrige agrupando los dos system antes del user. No se
 relaciona causalmente con el final vacío sin comprobar la ruta activa del servidor.
+
+Validación real posterior autorizada: [resultados A/B y petición mixta](VALIDACION_GPTOSS_API_LOCAL.md).
+Incluye los límites observados de latencia e interpretación, sin cambiar el
+validador ni aceptar contenido final vacío.

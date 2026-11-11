@@ -33,6 +33,7 @@ README.md
 ROADMAP.md
 SESION_RESULTADOS_INTEGRACION.md
 VALIDACION_FEDORA_DNF5.md
+VALIDACION_GPTOSS_API_LOCAL.md
 VALIDACION_INTEGRACION_DEBIAN.md
 adaptadores/__init__.py
 adaptadores/debian.py
@@ -95,6 +96,7 @@ registro_mantenimiento.py
 resultado_verificado.py
 servicios.py
 sesion_resultados.py
+tests/diagnostico_gptoss_local.py
 tests/ejecutar_regresion_completa.py
 tests/ejecutar_regresion_motor.py
 tests/evidencia_local.py
@@ -130,6 +132,7 @@ tests/test_contratos_fedora.py
 tests/test_control_verificado.py
 tests/test_despliegue_helper_apt.py
 tests/test_diagnostico_apt.py
+tests/test_diagnostico_gptoss_local.py
 tests/test_diagnostico_mantenimiento.py
 tests/test_distribucion_linux.py
 tests/test_dnf5_interactivo.py

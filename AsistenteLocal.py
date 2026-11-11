@@ -1047,12 +1047,16 @@ def _explicar_peticion_local(pregunta, resultados, pendientes, deadline, limite)
     mensajes = [
         {'role': 'system', 'content': prompt_segun_backend() +
          '\nResponde a todas las partes explicativas de la pregunta original. '
+         'Para preguntas conceptuales sencillas, responde en dos o tres frases sin repetir el informe numérico ya mostrado. '
          'Las operaciones ya han terminado o están bloqueadas: no las repitas ni añadas otras. '
          'Usa exclusivamente los hechos Python recibidos para afirmaciones sobre este equipo; '
          'lo omitido es desconocido. Una denegación solo limita esa parte de la petición. '
          'No afirmes haber ejecutado comprobaciones, no inventes datos, comandos, permisos '
          'ni recomendaciones administrativas. No propongas elevar privilegios. '
-         'Distingue explicación general, hechos y aspectos no verificables.' + '\n\n' + contexto},
+         'Distingue explicación general, hechos y aspectos no verificables. '
+         'Si solo se pregunta para qué sirve la swap, explica su función sin añadir un diagnóstico '
+         'de suficiencia de RAM. La ocupación de swap no mide actividad de intercambio; '
+         'no afirmes ausencia de actividad actual a partir de una instantánea.' + '\n\n' + contexto},
         {'role': 'user', 'content': pregunta},
     ]
     respuesta_validada = False

@@ -1,5 +1,11 @@
 # GPT-OSS: contenido final vacío, inspección estática y pruebas propuestas
 
+**Estado posterior:** A/B ya se han ejecutado con autorización y la corrección de
+roles ha pasado la prueba mixta real. Véase [validación funcional](VALIDACION_GPTOSS_API_LOCAL.md).
+El resto de este documento conserva la inspección y las propuestas previas; C–E no
+se necesitaron. La instrucción de producción añade ahora cautela de memoria y
+brevedad; los archivos A–E conservan los cuerpos sintéticos del contraste original.
+
 Rama: `mejora-coordinador`. Sin llamadas reales a LM Studio, Internet, sudo,
 instalaciones ni cambios de configuración del equipo. No se cambia el planificador
 ni el validador. Las pruebas de transporte usan dobles; los JSON de esta entrega
