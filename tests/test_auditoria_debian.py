@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 """Fixtures y adquisición simulada: sin dpkg real ni acceso a red."""
 import contextlib
 import io
@@ -219,7 +220,7 @@ class InventarioDebian(unittest.TestCase):
             self.assertEqual(entorno['dependencias']['correlacion_seguridad'],{})
             corr = json.loads(app.ejecutar_consulta('correlacion_seguridad'))
             self.assertEqual(corr['estado'],'no_implementado')
-            app.preguntar('inventario')
+            app._preguntar_con_herramientas('inventario')
             adquirir.assert_called_once()
             self.assertTrue(0 < adquirir.call_args.args[0] <= 120)
             mensajes = [m['content'] for m in modelo.call_args.args[0] if m['role']=='tool']

@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 import contextlib
 import http.client
 import io
@@ -271,7 +272,7 @@ class RecuperacionInterfaces(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', side_effect=[respuesta([consulta]), final]) as modelo, \
              patch.object(app, 'ejecutar_consulta', return_value=dato) as ejecutar, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('Consulta autorizada')
+            app._preguntar_con_herramientas('Consulta autorizada')
         self.assertEqual(modelo.call_count, 2)
         self.assertEqual(ejecutar.call_count, 1)
         return salida.getvalue()
@@ -311,7 +312,7 @@ class RecuperacionInterfaces(unittest.TestCase):
     def test_sin_hechos_previos_el_error_se_propaga(self):
         with patch.object(app, 'consultar_modelo', side_effect=TimeoutError()), \
              patch.object(app, 'ejecutar_consulta') as ejecutar, self.assertRaises(TimeoutError):
-            app.preguntar('interfaces')
+            app._preguntar_con_herramientas('interfaces')
         ejecutar.assert_not_called()
 
     def test_otras_herramientas_siguen_propagando_error(self):
@@ -325,7 +326,7 @@ class RecuperacionInterfaces(unittest.TestCase):
              patch.object(app, 'registrar_metadatos') as registrar, \
              patch.object(app, 'ejecutar_consulta', return_value=ResultadoInterfaces(datos(), app.MAX_OUTPUT)) as ejecutar, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('interfaces')
+            app._preguntar_con_herramientas('interfaces')
         self.assertEqual(abrir.call_count, 2)
         self.assertEqual(registrar.call_count, 2)
         self.assertEqual(ejecutar.call_count, 1)
@@ -345,3 +346,241 @@ class RecuperacionInterfaces(unittest.TestCase):
         self.assertIn('Interpretación del modelo — no verificada', texto)
         self.assertIn('Asistente: Comentario correcto', texto)
         self.assertNotIn('no está disponible', texto)
+
+
+class DiagnosticoExplicacion(unittest.TestCase):
+    PREGUNTA = ('Comprueba cuánta memoria RAM y swap tengo disponible, explícame '
+                'para qué sirve la swap y no utilices sudo')
+
+    def respuesta(self, contenido='La swap respalda páginas de memoria virtual en almacenamiento.'):
+        return {'id': 'PRIVADO_ID', 'model': 'openai/gpt-oss-20b', 'object': 'chat.completion',
+                'choices': [{'index': 0, 'finish_reason': 'stop',
+                             'message': {'role': 'assistant', 'content': contenido}}],
+                'usage': {'prompt_tokens': 1331, 'completion_tokens': 33, 'total_tokens': 1364}}
+
+    def ciclo(self, respuesta):
+        cuerpo = respuesta if isinstance(respuesta, bytes) else json.dumps(respuesta).encode()
+        http = HTTP(cuerpo)
+        resultado = dict(operacion='memoria', capacidad='disponible', autorizacion='permitida_lectura_local',
+                         ejecucion='finalizada', verificacion='completo', motivo='resultado_de_adquisicion',
+                         informe='RAM disponible: 4096 B. Swap libre: 2048 B.')
+        with patch.object(app, 'abrir_http_local', return_value=http) as abrir, \
+             patch.object(app, 'registrar_metadatos') as registrar, \
+             patch.object(app, 'ejecutar_comando', side_effect=AssertionError('Adquisición prohibida')), \
+             patch.object(app.subprocess, 'Popen', side_effect=AssertionError('Proceso prohibido')), \
+             contextlib.redirect_stdout(io.StringIO()) as salida:
+            app._explicar_peticion_local(self.PREGUNTA, [resultado], (), app.time.monotonic()+120, 18000)
+        abrir.assert_called_once()  # Sin reintento ni otra petición.
+        registrar.assert_called_once()
+        self.assertTrue(http.closed)
+        datos = registrar.call_args.args[0]
+        with contextlib.redirect_stderr(io.StringIO()) as registro:
+            metricas.registrar_metadatos(datos)
+        self.assertNotIn('PRIVADO', registro.getvalue())
+        self.assertNotIn(self.PREGUNTA, registro.getvalue())
+        self.assertEqual(resultado['verificacion'], 'completo')
+        return salida.getvalue(), datos, json.loads(abrir.call_args.args[0].data)
+
+    def test_payload_exacto_y_respuesta_corta_aceptada(self):
+        salida, datos, payload = self.ciclo(self.respuesta('La swap respalda páginas de memoria virtual.'))
+        self.assertIsNone(datos['tipo_error'])
+        self.assertEqual(payload['model'], 'openai/gpt-oss-20b')
+        self.assertEqual(payload['tool_choice'], 'none')
+        self.assertNotIn('tools', payload)
+        self.assertNotIn('response_format', payload)
+        self.assertNotIn('reasoning_effort', payload)
+        self.assertNotIn('stream', payload)
+        self.assertEqual(payload['max_tokens'], 1800)
+        self.assertEqual(payload['temperature'], .2)
+        self.assertEqual([m['role'] for m in payload['messages']], ['system', 'user'])
+        self.assertEqual(payload['messages'][1]['content'], self.PREGUNTA)
+        self.assertIn('4096', payload['messages'][0]['content'])
+        self.assertIn('Modelo |', salida)
+        self.assertIn('Interpretación del modelo', salida)
+
+    def test_stop_con_33_tokens_y_solo_razonamiento_reproduce_rechazo(self):
+        r = self.respuesta(None)
+        r['choices'][0]['message']['reasoning_content'] = 'PRIVADO_RAZONAMIENTO'
+        salida, datos, _ = self.ciclo(r)
+        self.assertEqual(datos['estado_http'], 200)
+        self.assertEqual(datos['finish_reason'], 'stop')
+        self.assertEqual(datos['uso_tokens']['completion_tokens'], 33)
+        self.assertEqual(datos['fase_error'], 'validacion')
+        self.assertEqual(datos['tipo_error'], 'RespuestaInvalida')
+        self.assertEqual(datos['motivo_validacion'], 'sin_texto_ni_herramientas')
+        self.assertEqual(datos['forma_respuesta']['content_tipo'], 'null')
+        self.assertTrue(datos['forma_respuesta']['reasoning_presente'])
+        self.assertIn('Motivo de validación: sin_texto_ni_herramientas', salida)
+        self.assertNotIn('PRIVADO', salida)
+        self.assertNotIn('Modelo |', salida)
+
+    def test_vacio_ausente_y_espacios_diferenciados(self):
+        for contenido, motivo in (('', 'sin_texto_ni_herramientas'), (None, 'sin_texto_ni_herramientas'),
+                                  (' \n\t', 'explicacion_vacia')):
+            with self.subTest(contenido=contenido):
+                salida, datos, _ = self.ciclo(self.respuesta(contenido))
+                self.assertEqual(datos['motivo_validacion'], motivo)
+                self.assertNotIn('Modelo |', salida)
+        r = self.respuesta()
+        del r['choices'][0]['message']['content']
+        _, datos, _ = self.ciclo(r)
+        self.assertEqual(datos['forma_respuesta']['content_tipo'], 'ausente')
+        self.assertEqual(datos['motivo_validacion'], 'sin_texto_ni_herramientas')
+
+    def test_tipos_no_textuales_no_se_adaptan(self):
+        for contenido in ([], [{'type': 'text', 'text': 'PRIVADO'}], {'text': 'PRIVADO'}, 33):
+            with self.subTest(contenido=contenido):
+                salida, datos, _ = self.ciclo(self.respuesta(contenido))
+                self.assertEqual(datos['motivo_validacion'], 'contenido_no_textual')
+                self.assertNotIn('PRIVADO', salida)
+                self.assertNotIn('Modelo |', salida)
+
+    def test_json_y_roles_invalidos_distinguidos(self):
+        for r, motivo in ((b'{PRIVADO', 'json_invalido'), ([], 'respuesta_no_objeto'),
+                          ({'choices': []}, 'choices_invalidas'),
+                          ({'choices': [{'message': {'role': 'user', 'content': 'PRIVADO'}}]}, 'assistant_invalido')):
+            with self.subTest(motivo=motivo):
+                _, datos, _ = self.ciclo(r)
+                self.assertEqual(datos['motivo_validacion'], motivo)
+
+    def test_campos_adicionales_y_tool_calls_nulo_no_cambian_texto_publico(self):
+        r = self.respuesta('La swap puede contener páginas poco utilizadas.')
+        r['choices'][0]['message'].update(reasoning='PRIVADO', tool_calls=None, campo_inesperado='PRIVADO')
+        salida, datos, _ = self.ciclo(r)
+        self.assertIsNone(datos['tipo_error'])
+        self.assertTrue(datos['forma_respuesta']['reasoning_presente'])
+        self.assertNotIn('PRIVADO', salida)
+        self.assertIn('La swap puede', salida)
+
+    def test_herramientas_y_function_call_no_se_ejecutan(self):
+        for campo, valor in (('tool_calls', [{'id': 'x', 'type': 'function',
+                'function': {'name': 'memoria', 'arguments': '{}'}}]),
+                             ('function_call', {'name': 'memoria', 'arguments': '{}'})):
+            r = self.respuesta('Texto breve.')
+            r['choices'][0]['message'][campo] = valor
+            salida, datos, _ = self.ciclo(r)
+            self.assertEqual(datos['motivo_validacion'], 'herramientas_en_explicacion')
+            self.assertEqual(datos['fase_error'], 'validacion')
+            self.assertNotIn('Modelo |', salida)
+
+    def test_finish_reason_incompleto_o_inesperado(self):
+        for final in ('length', 'content_filter', 'tool_calls', 'PRIVADO'):
+            r = self.respuesta()
+            r['choices'][0]['finish_reason'] = final
+            _, datos, _ = self.ciclo(r)
+            self.assertEqual(datos['motivo_validacion'], 'explicacion_no_final')
+
+    def test_guardia_semantica_ahora_tiene_metricas(self):
+        for contenido in ('He comprobado la RAM.', 'Ejecuta sudo para consultar memoria.'):
+            salida, datos, _ = self.ciclo(self.respuesta(contenido))
+            self.assertEqual(datos['motivo_validacion'], 'afirmacion_operativa_o_recomendacion_administrativa')
+            self.assertEqual(datos['fase_error'], 'validacion')
+            self.assertNotIn(contenido, salida)
+
+    def test_diagnosticos_son_doble_lista_blanca(self):
+        datos = metricas.MedicionHTTP().finalizar()
+        datos.update(motivo_validacion='PRIVADO', forma_respuesta=dict(content_tipo='PRIVADO',
+                     reasoning_presente='PRIVADO', content_vacio=True, respuesta='PRIVADO'))
+        with contextlib.redirect_stderr(io.StringIO()) as registro:
+            metricas.registrar_metadatos(datos)
+        self.assertNotIn('PRIVADO', registro.getvalue())
+        salida = json.loads(registro.getvalue().split(' ', 1)[1])
+        self.assertIsNone(salida['motivo_validacion'])
+        self.assertIsNone(salida['forma_respuesta']['content_tipo'])
+        self.assertIsNone(salida['forma_respuesta']['reasoning_presente'])
+        self.assertTrue(salida['forma_respuesta']['content_vacio'])
+
+    def test_modo_explicacion_exige_herramientas_omitidas_y_desactivadas(self):
+        with patch.object(app, 'abrir_http_local') as abrir, patch.object(app, 'registrar_metadatos'):
+            for opciones in ({}, {'permitir_herramientas': False}):
+                with self.assertRaises(ValueError):
+                    app.consultar_modelo([], solo_explicacion=True, **opciones)
+            abrir.assert_not_called()
+
+
+class CompatibilidadRolesGPTOSS(unittest.TestCase):
+    """Simulación de límites del protocolo; no carga modelos ni llama a LM Studio."""
+    def fixture(self, nombre):
+        from pathlib import Path
+        return json.loads((Path(__file__).parent/'fixtures'/'lmstudio_explicacion'/nombre).read_text())
+
+    def render_fallback_reducido(self, mensajes):
+        # Doble del enrutamiento de roles observado en la plantilla GGUF local.
+        # No simula inferencia ni demuestra cuál renderer utiliza el servidor.
+        primero, *resto = mensajes
+        visibles = [primero['content']] if primero['role'] in ('system', 'developer') else []
+        return '\n'.join(visibles + [m['content'] for m in resto if m['role'] in ('user', 'assistant', 'tool')])
+
+    def test_reproduce_perdida_de_contexto_en_system_tardio(self):
+        a = self.fixture('A_system_user_system.json')
+        render = self.render_fallback_reducido(a['messages'])
+        self.assertIn(DiagnosticoExplicacion.PREGUNTA, render)
+        self.assertNotIn('RAM disponible: 4096 B.', render)
+
+    def test_disposicion_corregida_conserva_pregunta_hechos_y_restricciones(self):
+        a = self.fixture('A_system_user_system.json')
+        b = self.fixture('B_system_user.json')
+        self.assertEqual(b['messages'][0]['content'], a['messages'][0]['content']+'\n\n'+a['messages'][2]['content'])
+        self.assertEqual(b['messages'][1], a['messages'][1])
+        self.assertEqual({k:v for k,v in a.items() if k!='messages'}, {k:v for k,v in b.items() if k!='messages'})
+        render = self.render_fallback_reducido(b['messages'])
+        self.assertIn(DiagnosticoExplicacion.PREGUNTA, render)
+        self.assertIn('RAM disponible: 4096 B.', render)
+        self.assertIn('Swap libre: 2048 B.', render)
+        self.assertIn('No propongas elevar privilegios.', render)
+
+    def test_payload_produccion_conserva_b_y_anade_cautela_memoria(self):
+        with patch.object(app, 'seleccionar_backend_seguridad', return_value={'backend': 'debian'}):
+            _, _, payload = DiagnosticoExplicacion().ciclo(DiagnosticoExplicacion().respuesta())
+        esperado = self.fixture('B_system_user.json')
+        esperado['messages'][0]['content'] = esperado['messages'][0]['content'].replace(
+            'Distingue explicación general, hechos y aspectos no verificables.',
+            'Distingue explicación general, hechos y aspectos no verificables. '
+            'Si solo se pregunta para qué sirve la swap, explica su función sin añadir un diagnóstico '
+            'de suficiencia de RAM. La ocupación de swap no mide actividad de intercambio; '
+            'no afirmes ausencia de actividad actual a partir de una instantánea.')
+        esperado['messages'][0]['content'] = esperado['messages'][0]['content'].replace(
+            'Responde a todas las partes explicativas de la pregunta original. ',
+            'Responde a todas las partes explicativas de la pregunta original. '
+            'Para preguntas conceptuales sencillas, responde en dos o tres frases sin repetir el informe numérico ya mostrado. ')
+        self.assertEqual(payload, esperado)
+
+    def test_variantes_propuestas_cambian_una_variable_y_conservan_limites(self):
+        b = self.fixture('B_system_user.json')
+        c = self.fixture('C_sin_tool_choice.json')
+        d = self.fixture('D_reasoning_low.json')
+        e = self.fixture('E_max_completion_tokens.json')
+        self.assertEqual(c, {k:v for k,v in b.items() if k!='tool_choice'})
+        self.assertEqual(d, dict(b,reasoning_effort='low'))
+        self.assertEqual(e, dict({k:v for k,v in b.items() if k!='max_tokens'}, max_completion_tokens=1800))
+        for p in (b,c,d,e):
+            self.assertNotIn('tools', p)
+            self.assertNotIn('response_format', p)
+            self.assertEqual(p.get('max_tokens',p.get('max_completion_tokens')),1800)
+            self.assertEqual(p['messages'],b['messages'])
+
+    def test_separacion_de_razonamiento_no_borra_final_en_parser(self):
+        # La misma parte final se acepta con/sin campos de razonamiento separados.
+        for campo in (None, 'reasoning', 'reasoning_content'):
+            r = DiagnosticoExplicacion().respuesta('La swap respalda memoria virtual en almacenamiento.')
+            if campo:
+                r['choices'][0]['message'][campo] = 'PRIVADO_NO_PUBLICAR'
+            salida, datos, _ = DiagnosticoExplicacion().ciclo(r)
+            self.assertIsNone(datos['tipo_error'])
+            self.assertIn('La swap respalda', salida)
+            self.assertNotIn('PRIVADO_NO_PUBLICAR', salida)
+
+    def test_33_tokens_con_6_de_razonamiento_no_garantizan_final(self):
+        for contenido, rechazado in (('', True), ('La swap respalda memoria virtual.', False)):
+            r = DiagnosticoExplicacion().respuesta(contenido)
+            r['usage']['completion_tokens_details'] = {'reasoning_tokens':6}
+            r['choices'][0]['message']['reasoning'] = 'PRIVADO_NO_PUBLICAR'
+            salida, datos, _ = DiagnosticoExplicacion().ciclo(r)
+            self.assertEqual(datos['finish_reason'],'stop')
+            self.assertEqual(datos['uso_tokens']['completion_tokens'],33)
+            self.assertEqual(datos['uso_tokens']['completion_tokens_details']['reasoning_tokens'],6)
+            self.assertEqual(datos['tipo_error'] is not None,rechazado)
+            if rechazado:
+                self.assertEqual(datos['motivo_validacion'],'sin_texto_ni_herramientas')
+                self.assertTrue(datos['forma_respuesta']['content_vacio'])
+            self.assertNotIn('PRIVADO_NO_PUBLICAR',salida)

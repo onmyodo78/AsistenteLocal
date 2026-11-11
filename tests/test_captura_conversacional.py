@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 """Resultados y respuestas simuladas, sin ejecución de comandos ni LM Studio."""
 import contextlib
 import io
@@ -31,7 +32,7 @@ class CapturaConversacional(unittest.TestCase):
              patch.object(app, 'ejecutar_consulta', return_value=resultado) as ejecutar, \
              patch.object(app, 'seleccionar_backend_seguridad', return_value={'backend':'debian', 'estado':'parcial'}), \
              contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('consulta', coleccion=self.coleccion if coleccion is None else coleccion)
+            app._preguntar_con_herramientas('consulta', coleccion=self.coleccion if coleccion is None else coleccion)
         ejecutar.assert_called_once()
         return mensajes
 
@@ -94,7 +95,7 @@ class CapturaConversacional(unittest.TestCase):
     def test_compatibilidad_preguntar_sin_coleccion(self):
         with patch.object(app, 'consultar_modelo', return_value=respuesta(content='respuesta')), \
              contextlib.redirect_stdout(io.StringIO()):
-            self.assertIsNone(app.preguntar('consulta'))
+            self.assertIsNone(app._preguntar_con_herramientas('consulta'))
 
     def test_main_crea_una_sesion_y_cierra(self):
         sesion = Mock()
@@ -118,7 +119,7 @@ class CapturaConversacional(unittest.TestCase):
     def test_modelo_no_puede_operar_la_coleccion(self):
         with patch.object(app, 'consultar_modelo', side_effect=[respuesta([llamada('vaciar_coleccion')]), respuesta(content='fin')]), \
              patch.object(app, 'ejecutar_consulta') as ejecutar, contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('consulta', coleccion=self.coleccion)
+            app._preguntar_con_herramientas('consulta', coleccion=self.coleccion)
         ejecutar.assert_not_called()
         self.assertEqual(len(app.TOOLS), 14)
         self.assertEqual(self.coleccion.consultar(), [])
@@ -179,7 +180,7 @@ class PresentacionDebian(unittest.TestCase):
              patch.object(app.subprocess,'Popen',side_effect=AssertionError('Proceso real')), \
              patch.object(app,'abrir_http_local',side_effect=AssertionError('LM Studio real')), \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('auditoría simulada')
+            app._preguntar_con_herramientas('auditoría simulada')
         adquirir.assert_called_once()
         self.assertEqual(modelo.call_count,2)
         mensajes = modelo.call_args.args[0]

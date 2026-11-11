@@ -25,6 +25,10 @@ prioridades y motivos de parada. No constituye un planificador general autónomo
 La descarga y la instalación APT tienen autorizaciones independientes. Una recomendación
 no autoriza ninguna de ellas. Diseño: [ARQUITECTURA_AUTONOMIA.md](ARQUITECTURA_AUTONOMIA.md).
 
+La entrada conversacional incluye ahora lecturas deterministas de memoria, disco,
+interfaces, VPN local y servicios fallidos. Las solicitudes ambiguas no ejecutan
+herramientas. Alcance, ejemplos y límites: [autonomía operativa local](AUTONOMIA_OPERATIVA_LOCAL.md).
+
 ## Compatibilidad y requisitos
 
 | Componente | Alcance comprobado |

@@ -137,6 +137,6 @@ class Separacion(unittest.TestCase):
                 respuesta([llamada('disco')]), completa('Comentario')]), \
              patch.object(app, 'ejecutar_consulta', return_value='DATOS_DISCO'), \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('consulta')
+            app._preguntar_con_herramientas('consulta')
         self.assertIn('Herramienta | DATOS_DISCO', self.factual(salida.getvalue()))
         self.assertNotIn('Comentario', self.factual(salida.getvalue()))

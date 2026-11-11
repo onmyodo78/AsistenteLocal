@@ -12,6 +12,50 @@ FINALES = {'stop', 'length', 'tool_calls', 'function_call', 'content_filter'}
 ERRORES_SISTEMA = {'TimeoutError', 'ConnectionRefusedError', 'PermissionError', 'OSError'}
 
 
+MOTIVOS_VALIDACION = frozenset((
+    'respuesta_no_objeto', 'choices_invalidas', 'assistant_invalido',
+    'contenido_no_textual', 'llamadas_invalidas', 'llamada_invalida',
+    'llamada_malformada', 'sin_texto_ni_herramientas', 'json_invalido',
+    'http_excesivo', 'explicacion_vacia', 'herramientas_en_explicacion',
+    'explicacion_no_final', 'afirmacion_operativa_o_recomendacion_administrativa',
+))
+
+
+def motivo_validacion(error):
+    codigo = getattr(error, 'codigo', None)
+    return codigo if isinstance(codigo, str) and codigo in MOTIVOS_VALIDACION else None
+
+
+def forma_segura(respuesta):
+    """Solo tipos, contadores y presencia de campos conocidos; nunca valores."""
+    if not isinstance(respuesta, dict):
+        return None
+    choices = respuesta.get('choices')
+    choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+    mensaje = choice.get('message')
+    mensaje = mensaje if isinstance(mensaje, dict) else {}
+    contenido = mensaje.get('content')
+    tipo = ('ausente' if 'content' not in mensaje else 'null' if contenido is None else
+            'texto' if isinstance(contenido, str) else 'lista' if isinstance(contenido, list) else
+            'objeto' if isinstance(contenido, dict) else 'otro')
+    return dict(content_tipo=tipo,
+                content_vacio=(not contenido) if isinstance(contenido, str) else None,
+                content_solo_espacios=(bool(contenido) and not contenido.strip()) if isinstance(contenido, str) else None,
+                reasoning_presente=any(k in mensaje for k in ('reasoning', 'reasoning_content', 'analysis')),
+                tool_calls_presente='tool_calls' in mensaje,
+                function_call_presente='function_call' in mensaje)
+
+
+def sanear_forma(forma):
+    if not isinstance(forma, dict):
+        return None
+    tipo = forma.get('content_tipo')
+    return dict(content_tipo=tipo if isinstance(tipo, str) and tipo in ('ausente', 'null', 'texto', 'lista', 'objeto', 'otro') else None,
+                **{k: forma.get(k) if type(forma.get(k)) is bool else None for k in (
+                    'content_vacio', 'content_solo_espacios', 'reasoning_presente',
+                    'tool_calls_presente', 'function_call_presente')})
+
+
 def tipo_error_sistema(error):
     """Solo la excepción de sistema explícita; nunca inferir desde su texto.
 
@@ -84,7 +128,7 @@ class MedicionHTTP:
         self.actual = 'preparacion'
         self.datos = {'duraciones_s': {fase: None for fase in FASES},
                       'bytes_peticion': 0, 'bytes_cuerpo': 0, 'estado_http': None,
-                      'finish_reason': None, 'uso_tokens': None}
+                      'finish_reason': None, 'uso_tokens': None, 'forma_respuesta': None}
 
     def fase(self, nombre):
         ahora = time.monotonic()
@@ -97,6 +141,7 @@ class MedicionHTTP:
 
     def respuesta(self, respuesta):
         # Extraer solo campos permitidos, incluso si el mensaje resulta inválido.
+        self.datos['forma_respuesta'] = forma_segura(respuesta)
         if not isinstance(respuesta, dict):
             return
         choices = respuesta.get('choices')
@@ -112,7 +157,7 @@ class MedicionHTTP:
                                       for k, v in self.datos['duraciones_s'].items()}
         self.datos.update(total_s=round(max(0, ahora - self.inicio), 6),
                           tipo_error=tipo_error(error), fase_error=self.actual if error else None,
-                          tipo_error_sistema=tipo_error_sistema(error))
+                          tipo_error_sistema=tipo_error_sistema(error), motivo_validacion=motivo_validacion(error))
         if isinstance(error, urllib.error.HTTPError):
             self.estado_http(error.code)
         if isinstance(error, http.client.IncompleteRead) and isinstance(error.partial, (bytes, bytearray)):
@@ -137,6 +182,7 @@ def registrar_metadatos(datos):
     codigo = datos.get('estado_http')
     tipos = {'HTTPError', 'TimeoutError', 'URLError', 'IncompleteRead', 'HTTPException',
              'OSError', 'RespuestaInvalida', 'ValueError', 'Interrupcion', 'ErrorInterno'}
+    motivo = datos.get('motivo_validacion')
     seguro = {
         'duraciones_s': {k: _duracion(duraciones.get(k)) for k in FASES},
         'total_s': _duracion(datos.get('total_s')),
@@ -145,6 +191,8 @@ def registrar_metadatos(datos):
         'estado_http': codigo if type(codigo) is int and 100 <= codigo <= 599 else None,
         'finish_reason': final if isinstance(final, str) and final in FINALES else None,
         'uso_tokens': uso_seguro(datos.get('uso_tokens')),
+        'motivo_validacion': motivo if isinstance(motivo, str) and motivo in MOTIVOS_VALIDACION else None,
+        'forma_respuesta': sanear_forma(datos.get('forma_respuesta')),
         'fase_error': fase if isinstance(fase, str) and fase in FASES else None,
         'tipo_error': error if isinstance(error, str) and error in tipos else None,
         'tipo_error_sistema': sistema if isinstance(sistema, str) and sistema in ERRORES_SISTEMA else None,

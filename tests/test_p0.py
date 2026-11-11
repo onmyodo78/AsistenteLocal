@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 import contextlib
 import io
 import json
@@ -47,7 +48,7 @@ class SeguridadP0(unittest.TestCase):
                 with patch.object(app, 'consultar_modelo', side_effect=[
                     respuesta([llamada(nombre, argumentos)]), respuesta(content='Fin')]), \
                      patch.object(app, 'ejecutar_consulta') as run, contextlib.redirect_stdout(io.StringIO()):
-                    app.preguntar('consulta')
+                    app._preguntar_con_herramientas('consulta')
                     run.assert_not_called()
 
     def test_repeticiones_y_respuesta_final(self):
@@ -56,7 +57,7 @@ class SeguridadP0(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', side_effect=respuestas) as modelo, \
              patch.object(app, 'ejecutar_consulta', return_value='dato') as run, \
              contextlib.redirect_stdout(io.StringIO()) as out:
-            app.preguntar('consulta')
+            app._preguntar_con_herramientas('consulta')
             self.assertEqual(run.call_count, 1)
             self.assertIn('Resumen', out.getvalue())
             self.assertFalse(modelo.call_args.kwargs['permitir_herramientas'])
@@ -66,7 +67,7 @@ class SeguridadP0(unittest.TestCase):
         with patch.object(app, 'MAX_ROUNDS', 0), \
              patch.object(app, 'consultar_modelo', return_value=respuesta([llamada()])), \
              patch.object(app, 'ejecutar_consulta') as run, contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('consulta')
+            app._preguntar_con_herramientas('consulta')
             run.assert_not_called()
 
     def test_limite_total_y_por_salida(self):
@@ -78,7 +79,7 @@ class SeguridadP0(unittest.TestCase):
              patch.object(app, 'consultar_modelo', side_effect=tandas) as modelo, \
              patch.object(app, 'ejecutar_consulta', return_value='x' * 50000) as run, \
              contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('consulta')
+            app._preguntar_con_herramientas('consulta')
             tools = [m for m in modelo.call_args.args[0] if m['role'] == 'tool']
             self.assertLessEqual(sum(len(m['content']) for m in tools), 20000)
             self.assertEqual(run.call_count, 2)
@@ -173,7 +174,7 @@ class SeguridadP0(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', side_effect=tandas) as modelo, \
              patch.object(app, 'ejecutar_consulta', return_value='dato') as run, \
              contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('consulta')
+            app._preguntar_con_herramientas('consulta')
             self.assertEqual(run.call_count, app.MAX_CALLS)
             self.assertFalse(modelo.call_args.kwargs['permitir_herramientas'])
 

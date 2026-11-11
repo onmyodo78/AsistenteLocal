@@ -10,6 +10,24 @@ from motor_auditoria import ejecutar_comando
 from contratos_autonomia import OPERACIONES, ESTADOS, exigir
 
 
+def consultar_disco(comando, deadline):
+    """Lectura existente compartida; no conserva la salida libre de df."""
+    fuente=comando(('df','-h'),deadline)
+    montajes=[];vistos=set();fallo=False
+    for ruta in ('/','/usr','/var','/tmp'):
+        if time.monotonic()>=deadline:raise TimeoutError('plazo_agotado')
+        try:
+            st=os.stat(ruta);v=os.statvfs(ruta)
+            if st.st_dev not in vistos:
+                vistos.add(st.st_dev)
+                montajes.append(dict(ruta=ruta,dispositivo=st.st_dev,
+                    disponible_bytes=v.f_bavail*v.f_frsize,total_bytes=v.f_blocks*v.f_frsize))
+        except OSError:fallo=True
+    datos=dict(montajes=montajes,fuente=fuente['estado'],integridad='no_comprobada')
+    estado='completo' if fuente['estado']=='correcta' and not fallo else 'parcial'
+    return datos, estado
+
+
 class HerramientasLocales:
     def __init__(self):
         if os.geteuid()==0:raise PermissionError('auditoria_root_rechazada')
@@ -58,19 +76,7 @@ class HerramientasLocales:
             datos=dict(kernel=fuente['stdout'].strip(),fuente={k:v for k,v in fuente.items() if k!='stdout'})
             estado='completo' if fuente['estado']=='correcta' else 'no_verificable'
         elif operacion=='disco':
-            fuente=self.comando(('df','-h'),deadline)
-            montajes=[];vistos=set();fallo=False
-            for ruta in ('/','/usr','/var','/tmp'):
-                if time.monotonic()>=deadline:raise TimeoutError('plazo_agotado')
-                try:
-                    st=os.stat(ruta);v=os.statvfs(ruta)
-                    if st.st_dev not in vistos:
-                        vistos.add(st.st_dev)
-                        montajes.append(dict(ruta=ruta,dispositivo=st.st_dev,
-                            disponible_bytes=v.f_bavail*v.f_frsize,total_bytes=v.f_blocks*v.f_frsize))
-                except OSError:fallo=True
-            datos=dict(montajes=montajes,fuente=fuente['estado'],integridad='no_comprobada')
-            estado='completo' if fuente['estado']=='correcta' and not fallo else 'parcial'
+            datos, estado = consultar_disco(self.comando, deadline)
         elif operacion=='memoria':
             from memoria import comando_meminfo,normalizar_memoria
             datos=normalizar_memoria(self.comando(comando_meminfo(sys.executable,65536),deadline))

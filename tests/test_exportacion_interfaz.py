@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 """Interacción humana simulada: sin diagnósticos, publicación ni archivos."""
 import builtins
 import contextlib
@@ -153,10 +154,10 @@ class InterfazLocal(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', return_value=respuesta(content=':exportar')), \
              patch.object(app, 'InterfazExportacion', side_effect=AssertionError('interfaz')), \
              contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('consulta')
+            app._preguntar_con_herramientas('consulta')
         with patch.object(app, 'consultar_modelo', side_effect=[respuesta([llamada(':exportar')]), respuesta(content='fin')]), \
              patch.object(app, 'ejecutar_consulta') as ejecutar, contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('consulta')
+            app._preguntar_con_herramientas('consulta')
         ejecutar.assert_not_called()
         self.assertEqual(self.coleccion.estado()['registros'], 2)
 

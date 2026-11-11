@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 """Continuación HTTP simulada: sin LM Studio, procesos ni APT reales."""
 import contextlib
 import copy
@@ -32,7 +33,7 @@ class ContinuacionAuditoria(unittest.TestCase):
              patch.object(app, 'registrar_metadatos'), \
              patch.object(app, 'ejecutar_consulta', return_value=resultado) as ejecutar, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('Consulta autorizada')
+            app._preguntar_con_herramientas('Consulta autorizada')
         ejecutar.assert_called_once()
         self.assertEqual(ejecutar.call_args.args[0], nombre)
         self.assertEqual(abrir.call_count, 2)
@@ -142,7 +143,7 @@ class ContinuacionAuditoria(unittest.TestCase):
                 completa('Fin')]) as modelo, \
              patch.object(app, 'ejecutar_consulta') as ejecutar, \
              contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('Consulta')
+            app._preguntar_con_herramientas('Consulta')
         ejecutar.assert_not_called()
         self.assertTrue(modelo.call_args.kwargs['permitir_herramientas'])
         self.assertNotIn('omitir_tools', modelo.call_args.kwargs)

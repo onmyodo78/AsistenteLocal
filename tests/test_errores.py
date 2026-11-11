@@ -14,7 +14,7 @@ import AsistenteLocal as app
 class ErroresSimulados(unittest.TestCase):
     def comprobar_recuperacion(self, error, mensaje):
         with patch.object(sys, 'argv', ['AsistenteLocal.py']), \
-             patch('builtins.input', side_effect=['primera', 'segunda', 'salir']), \
+             patch('builtins.input', side_effect=['Qué es RAM', 'Qué es swap', 'salir']), \
              patch.object(app, 'consultar_modelo', side_effect=[error,
                  {'choices': [{'message': {'role': 'assistant', 'content': 'Recuperado'}}]}]) as modelo, \
              patch.object(app, 'ejecutar_consulta') as ejecutar, \
