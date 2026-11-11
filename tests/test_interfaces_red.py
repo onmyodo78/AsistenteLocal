@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 import contextlib
 import copy
 import io
@@ -243,7 +244,7 @@ class InterfacesAplicacion(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', side_effect=[respuesta([llamada()]), TimeoutError()]), \
              patch.object(app, 'ejecutar_consulta', return_value=ResultadoInterfaces(datos(), app.MAX_OUTPUT)), \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('interfaces')
+            app._preguntar_con_herramientas('interfaces')
         self.assertIn('Hechos de interfaces_red', salida.getvalue())
         self.assertIn('Radio: desconocida', salida.getvalue())
         self.assertIn('interpretación de LM Studio no está disponible', salida.getvalue())
@@ -253,7 +254,7 @@ class InterfacesAplicacion(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', side_effect=respuestas) as modelo, \
              patch.object(app, 'ejecutar_consulta', return_value=resultado), \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('Revisa interfaces')
+            app._preguntar_con_herramientas('Revisa interfaces')
         mensajes = modelo.call_args.args[0]
         contenido = next(m['content'] for m in mensajes if m['role'] == 'tool')
         return salida.getvalue(), contenido
@@ -282,7 +283,7 @@ class InterfacesAplicacion(unittest.TestCase):
         with patch.object(app, 'MAX_TOTAL_OUTPUT', MIN_JSON - 1), \
              patch.object(app, 'consultar_modelo', side_effect=[respuesta([llamada()]), respuesta(texto='Fin')]), \
              patch.object(app, 'ejecutar_consulta') as consulta, contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('interfaces')
+            app._preguntar_con_herramientas('interfaces')
         consulta.assert_not_called()
 
     def test_gran_resultado_se_omite_antes_de_entregarse(self):
@@ -299,7 +300,7 @@ class InterfacesAplicacion(unittest.TestCase):
              patch.object(app, 'ejecutar_consulta', side_effect=[
                  'd' * 5500, ResultadoInterfaces(datos(), app.MAX_OUTPUT)]), \
              contextlib.redirect_stdout(io.StringIO()):
-            app.preguntar('disco e interfaces')
+            app._preguntar_con_herramientas('disco e interfaces')
         contenidos = [m['content'] for m in modelo.call_args.args[0] if m['role'] == 'tool']
         self.assertLessEqual(sum(map(len, contenidos)), limite_total)
         self.assertEqual(json.loads(contenidos[1])['estado'], 'omitido_por_limite')
@@ -315,7 +316,7 @@ class InterfacesAplicacion(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', side_effect=[respuesta([llamada('disco')]), respuesta(texto='Fin')]), \
              patch.object(app, 'ejecutar_consulta', return_value='Informe disco'), \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('disco')
+            app._preguntar_con_herramientas('disco')
         self.assertNotIn('Hechos de interfaces_red', salida.getvalue())
         self.assertIn('Interpretación del modelo', salida.getvalue())
         self.assertIn('Herramienta | Informe disco', salida.getvalue())

@@ -4,6 +4,7 @@ AUDITORIA_BASICA_FASE1.md
 AUDITORIA_BASICA_FASE2.md
 AUDITORIA_PORTABILIDAD.md
 AUDITORIA_SEMANAL.md
+AUTONOMIA_OPERATIVA_LOCAL.md
 AsistenteLocal.py
 CHANGELOG.md
 CIERRE_TECNICO_FEDORA.md
@@ -84,6 +85,7 @@ mantenimiento_worker.py
 memoria.py
 motor_auditoria.py
 motor_consultas.py
+operaciones_locales.py
 presentacion_auditoria_basica.py
 proyeccion_auditoria_basica.py
 proyeccion_compacta_auditoria.py
@@ -158,6 +160,7 @@ tests/test_mensaje_apt.py
 tests/test_motor_consultas_fase1.py
 tests/test_motor_independiente.py
 tests/test_motor_independiente_real.py
+tests/test_operaciones_locales.py
 tests/test_p0.py
 tests/test_presentacion_auditoria_basica.py
 tests/test_programacion_mantenimiento.py

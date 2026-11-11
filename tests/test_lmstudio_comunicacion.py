@@ -1,3 +1,4 @@
+# El protocolo assistant/tool se prueba directamente; el router público se cubre en test_operaciones_locales.
 import contextlib
 import http.client
 import io
@@ -271,7 +272,7 @@ class RecuperacionInterfaces(unittest.TestCase):
         with patch.object(app, 'consultar_modelo', side_effect=[respuesta([consulta]), final]) as modelo, \
              patch.object(app, 'ejecutar_consulta', return_value=dato) as ejecutar, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('Consulta autorizada')
+            app._preguntar_con_herramientas('Consulta autorizada')
         self.assertEqual(modelo.call_count, 2)
         self.assertEqual(ejecutar.call_count, 1)
         return salida.getvalue()
@@ -311,7 +312,7 @@ class RecuperacionInterfaces(unittest.TestCase):
     def test_sin_hechos_previos_el_error_se_propaga(self):
         with patch.object(app, 'consultar_modelo', side_effect=TimeoutError()), \
              patch.object(app, 'ejecutar_consulta') as ejecutar, self.assertRaises(TimeoutError):
-            app.preguntar('interfaces')
+            app._preguntar_con_herramientas('interfaces')
         ejecutar.assert_not_called()
 
     def test_otras_herramientas_siguen_propagando_error(self):
@@ -325,7 +326,7 @@ class RecuperacionInterfaces(unittest.TestCase):
              patch.object(app, 'registrar_metadatos') as registrar, \
              patch.object(app, 'ejecutar_consulta', return_value=ResultadoInterfaces(datos(), app.MAX_OUTPUT)) as ejecutar, \
              contextlib.redirect_stdout(io.StringIO()) as salida:
-            app.preguntar('interfaces')
+            app._preguntar_con_herramientas('interfaces')
         self.assertEqual(abrir.call_count, 2)
         self.assertEqual(registrar.call_count, 2)
         self.assertEqual(ejecutar.call_count, 1)

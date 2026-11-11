@@ -42,7 +42,7 @@ from resultado_verificado import ResultadoVerificado, adaptar_interfaces, adapta
 from sesion_resultados import ColeccionSesion
 from exportacion_interfaz import InterfazExportacion, COMANDO as COMANDO_EXPORTAR
 from historial_contratos import adaptar_auditoria as sanear_auditoria
-from motor_consultas import ContextoFactual, planificar
+from motor_consultas import ContextoFactual, planificar, _planificar_seguridad
 from informes_factuales import (
     resumen_factual_debian, informe_correlacion_debian, informe_fallo_adquisicion,
 )
@@ -1008,6 +1008,69 @@ def interpretar_auditoria_basica(traza, deadline, salida_factual):
           'Se conserva el informe factual de Python; no se reintenta ni se repiten adquisiciones.')
 
 def preguntar(pregunta, coleccion=None, contexto=None):
+    """Entrada pública: las lecturas conocidas no delegan decisiones al modelo."""
+    from auditoria_basica import es_objetivo_basico
+    from operaciones_locales import adquirir, ejecutar_plan
+    if es_objetivo_basico(pregunta):
+        return _preguntar_con_herramientas(pregunta, coleccion, contexto)
+    plan = planificar(pregunta)
+    if not plan.local and (plan.nombres or plan.reutilizar):
+        return _preguntar_con_herramientas(pregunta, coleccion, contexto)
+    if plan.tipo == 'ambigua':
+        mostrar_informe_factual(
+            'Comprobación no realizada. Solicitud ambigua o fuera del alcance de lectura (' +
+            plan.motivo + '). Especifica la lectura: memoria, disco, interfaces, VPN local '
+            'o servicios fallidos. No se han iniciado herramientas ni solicitado privilegios.')
+        return
+    if plan.tipo == 'conceptual':
+        # La respuesta conceptual no dispone de herramientas ni autoridad operativa.
+        respuesta = consultar_modelo([
+            {'role': 'system', 'content': prompt_segun_backend()},
+            {'role': 'user', 'content': pregunta},
+        ], time.monotonic() + MAX_SECONDS, permitir_herramientas=False, omitir_tools=True)
+        mensaje = validar_respuesta(respuesta)
+        if mensaje['tool_calls']:
+            mostrar_informe_factual('Comprobación no realizada: herramientas rechazadas en consulta conceptual.')
+        else:
+            mostrar_interpretacion(mensaje['content'], con_hechos=False)
+        return
+    deadline = time.monotonic() + MAX_SECONDS
+    def lectura(nombre, fin, limite):
+        return adquirir(nombre, fin, ejecutar=ejecutar_comando, comprobar=restante,
+                        catalogo=TOOLS, memoria=consultar_memoria_verificada,
+                        interfaces=consultar_interfaces, servicios=consultar_servicios_verificados,
+                        limite=limite, consulta=ejecutar_consulta)
+    resultados = ejecutar_plan(plan, deadline, catalogo=TOOLS, adquirir=lectura,
+                              comprobar=restante, limite=MAX_OUTPUT,
+                              total=MAX_TOTAL_OUTPUT, llamadas=MAX_CALLS)
+    # Solo plantillas de Python; no se retienen nuevas lecturas en sesión/historial.
+    restante_salida = MAX_TOTAL_OUTPUT
+    for resultado in resultados:
+        try:
+            restante(deadline)
+        except TimeoutError:
+            resultado.update(verificacion='no_verificable', motivo='plazo_agotado_antes_de_publicar',
+                             informe='Informe omitido: plazo agotado antes de publicar; no se presentan datos tardíos.')
+        texto = '\n'.join([
+            'Operación: ' + resultado['operacion'],
+            'Capacidad: ' + resultado['capacidad'],
+            'Autorización: ' + resultado['autorizacion'],
+            'Ejecución: ' + resultado['ejecucion'],
+            'Verificación: ' + resultado['verificacion'],
+            'Motivo: ' + resultado['motivo'],
+            resultado['informe'],
+        ])
+        limite = min(MAX_OUTPUT, restante_salida)
+        if limite <= 0:
+            break
+        publicado = limitar(texto, limite)
+        mostrar_informe_factual(publicado)
+        restante_salida -= len(publicado)
+    return resultados
+
+
+def _preguntar_con_herramientas(pregunta, coleccion=None, contexto=None):
+    """Protocolo previo: usado por auditorías y sus regresiones de transporte."""
     from auditoria_basica import es_objetivo_basico, auditar, informe
     if es_objetivo_basico(pregunta):
         deadline = time.monotonic() + MAX_SECONDS
@@ -1022,7 +1085,7 @@ def preguntar(pregunta, coleccion=None, contexto=None):
     if contexto is None:
         contexto = _CONTEXTO_FACTUAL.get()
     debian = seleccionar_backend_seguridad()['backend'] == 'debian'
-    plan = planificar(pregunta) if debian else None
+    plan = _planificar_seguridad(pregunta) if debian else None
     if plan is not None and plan.reutilizar:
         return interpretar_contexto(pregunta, contexto, plan.nombres, deadline)
     pendientes = list(plan.nombres) if plan is not None else []

@@ -1,6 +1,5 @@
-"""Caracterización de autonomía actual; no implementa el coordinador propuesto."""
+"""Regresión de auditoría previa y rechazo de ampliaciones operativas imprecisas."""
 import contextlib
-import copy
 import io
 import json
 import unittest
@@ -25,28 +24,13 @@ class AutonomiaActual(unittest.TestCase):
         self.pila.enter_context(patch.object(app, 'abrir_http_local',
             side_effect=AssertionError('HTTP real prohibido')))
 
-    def test_seleccion_y_ampliacion_con_evidencia_sin_validar_razonamiento_modelo(self):
-        recibidos = []
-        respuestas = iter([
-            respuesta([llamada('memoria', ident='ram')]),
-            respuesta([llamada('servicios_fallidos', ident='servicios')],
-                      content='Ampliaré el diagnóstico con los servicios.'),
-            respuesta(content='La muestra de memoria no permite concluir presión sostenida.'),
-        ])
-        def modelo(mensajes, *args, **kwargs):
-            recibidos.append(copy.deepcopy(mensajes))
-            return next(respuestas)
-        with patch.object(app, 'consultar_modelo', side_effect=modelo), patch.object(
-                app, 'ejecutar_consulta', side_effect=[
-                    'Memoria: muestra puntual; presión sostenida no comprobada.',
-                    'Servicios fallidos: ninguno observado.']) as ejecutar:
+    def test_peticion_imprecisa_no_delega_ampliaciones_al_modelo(self):
+        with patch.object(app, 'consultar_modelo') as modelo, patch.object(
+                app, 'ejecutar_consulta') as ejecutar:
             app.preguntar('Comprueba recursos y amplía el diagnóstico si procede')
-        self.assertEqual([c.args[0] for c in ejecutar.call_args_list],
-                         ['memoria', 'servicios_fallidos'])
-        self.assertIn('presión sostenida no comprobada', recibidos[1][-1]['content'])
-        self.assertEqual(recibidos[1][-1]['role'], 'tool')
-        self.assertIn('no verificada', self.salida.getvalue())
-        self.assertIn('INFORME FACTUAL DE PYTHON', self.salida.getvalue())
+        modelo.assert_not_called()
+        ejecutar.assert_not_called()
+        self.assertIn('Solicitud ambigua', self.salida.getvalue())
 
     def test_denegaciones_no_ejecutan_aunque_modelo_invoque_operaciones(self):
         casos = [llamada('terminal', '{"comando":"id"}'),
@@ -57,7 +41,7 @@ class AutonomiaActual(unittest.TestCase):
             with self.subTest(solicitud=solicitud), patch.object(app, 'ejecutar_consulta') as ejecutar, patch.object(
                     app, 'consultar_modelo', side_effect=[
                         respuesta([solicitud]), respuesta(content='Operación no realizada.')]):
-                app.preguntar('Comprueba recursos disponibles')
+                app._preguntar_con_herramientas('Comprueba recursos disponibles')
                 ejecutar.assert_not_called()
         self.assertNotIn('diagnostico_vpn', app.herramientas_disponibles())
 
