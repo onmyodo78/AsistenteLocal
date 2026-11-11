@@ -22,11 +22,13 @@ class Plan:
     conceptual: bool = False
     motivo: str = ''
     local: bool = False
+    explicar: bool = False
+    pendientes: tuple = ()
 
     @property
     def tipo(self):
         if self.nombres or self.reutilizar:
-            return 'operativa'
+            return 'mixta' if self.explicar else 'operativa'
         return 'conceptual' if self.conceptual else 'ambigua'
 
 
@@ -75,74 +77,93 @@ TEMAS_LOCALES = {
     'trafico_red': r'\b(trafico_red|trafico de red)\b',
     'listar_documentos': r'\b(listar_documentos|documentos)\b',
 }
-ACCION = r'\b(comprueba|comprobar|verifica|verificar|revisa|revisar|consulta|consultar|muestra|muestrame|mostrar|dame|dime|lista|listar|ejecuta|ejecutar)\b'
-CONCEPTO = r'\b(que es|que son|que significa|como funciona|como funcionan|para que sirve|diferencia entre|explica(?:me)?|que (?:herramientas|comandos|permisos)|(?:es posible|se puede|puedo) (?:comprobar|verificar|consultar|revisar)|como (?:puedo |se puede |debo |podria )?(?:comprobar|verificar|consultar|revisar|ver|saber))\b'
+ACCION = r'\b(analiza|analizar|diagnostica|diagnosticar|realiza|haz|comprueba|comprobar|verifica|verificar|revisa|revisar|consulta|consultar|muestra|muestrame|mostrar|dame|dime|lista|listar|ejecuta|ejecutar)\b'
+CONCEPTO = r'\b(es normal|por que|que implica|que ocurre|que pasa|que ventajas|que riesgos|que relacion|que es|que son|que significa|como funciona|como funcionan|para que sirve|diferencia entre|explica(?:me|ndo)?|para (?:saber|entender|conocer)|que (?:herramientas|comandos|permisos)|(?:es posible|se puede|puedo) (?:comprobar|verificar|consultar|revisar)|como (?:puedo |se puede |debo |podria )?(?:comprobar|verificar|consultar|revisar|ver|saber))\b'
 NEGACION = r'\b(no|sin|nunca|tampoco|excepto|salvo)\b'
 
 
-def planificar(pregunta):
-    """No reconocido implica aclaración, nunca autorización delegada al modelo.
+TEMAS_ADQUISICION = dict(TEMAS_LOCALES,
+    auditoria_seguridad=r'\b(auditoria_seguridad|auditoria|audita\w*|actualizaciones|paquetes)\b',
+    correlacion_seguridad=r'\b(correlacion_seguridad|correlacion|cve|vulnerabilidades)\b')
 
-    Las cláusulas con negación se excluyen; negaciones de alcance dudoso,
-    condicionales y referencias locales al pasado no fuerzan adquisición.
-    La gramática de seguridad previa conserva su contrato de sesión.
+
+def planificar(pregunta):
+    """Selecciona adquisiciones por cláusula; no recorta la pregunta a responder.
+
+    La explicación usa siempre la pregunta original. Una cláusula bloqueada no
+    invalida las lecturas independientes; no se hereda una acción tras negaciones,
+    conceptos o fragmentos cuyo alcance no está resuelto.
     """
     texto = normalizar(pregunta).strip()
     locales = any(re.search(patron, texto) for patron in TEMAS_LOCALES.values())
-    if re.search(r'\bauditoria\b', texto) and not any(re.search(TEMAS_LOCALES[n], texto) for n in ('memoria', 'disco', 'interfaces_red', 'vpn', 'servicios_fallidos')):
-        return _planificar_seguridad(pregunta)
     seguridad = bool(re.search(r'\b(auditoria|audita\w*|seguridad|actualizaciones|paquetes|correlacion|cve|vulnerabilidades|auditoria_seguridad|correlacion_seguridad)\b', texto))
-    if not locales and (seguridad or re.search(r'\b(anterior\w*|reutiliza\w*|sin repetir|esos resultados|esos datos)\b', texto)):
+    separable = bool(re.search(r'\b(y|pero)\b|[,;]|\S\s+sin (?:consult|ejecut|comprob)', texto))
+    mixta_seguridad = seguridad and separable and bool(re.search(CONCEPTO, texto) or re.search(NEGACION, texto))
+    if not locales and not mixta_seguridad and (seguridad or re.search(r'\b(anterior\w*|reutiliza\w*|sin repetir|esos resultados|esos datos)\b', texto)):
         return _planificar_seguridad(pregunta)
-    if not locales:
-        if re.search(CONCEPTO, texto) or re.fullmatch(r'(hola|buenos dias|buenas tardes)[!.]?', texto):
-            return Plan(conceptual=True, motivo='consulta_conceptual')
-        return Plan(motivo='solicitud_no_reconocida')
-    if re.search(CONCEPTO, texto) and not re.search(r'\b(comprueba|verifica|revisa|consulta|muestra|muestrame|dame|lista|ejecuta)\b', texto):
-        return Plan(conceptual=True, motivo='consulta_conceptual', local=True)
-    if re.search(r'\b(si|quizas|tal vez|podria|podrias|antes de|despues de|cuando|a menos|o)\b', texto):
-        return Plan(motivo='alcance_condicional_o_alternativo', local=True)
-    if re.search(r'\b(anterior\w*|obtenidos|reutiliza\w*|sin repetir|sin ejecutar|esos datos)\b', texto):
-        return Plan(motivo='referencia_local_sin_contexto_admitido', local=True)
-    # Cambios del sistema nunca se convierten en lecturas sustitutivas.
-    if re.search(r'\b(instala\w*|actualiza\w*|reinicia\w*|borra\w*|elimina\w*|desactiva\w*|activa\w*|sudo|apt|dnf|comando|terminal|shell|bash|curl)\b', texto):
-        return Plan(motivo='cambio_fuera_del_alcance_de_lectura', local=True)
+    # Mantener la selección de auditoría básica/seguridad previa, sin confundir
+    # "sistema" con una solicitud independiente de uname.
+    if not mixta_seguridad and re.search(r'\bauditoria\b', texto) and not any(re.search(TEMAS_LOCALES[n], texto) for n in ('memoria', 'disco', 'interfaces_red', 'vpn', 'servicios_fallidos')):
+        return _planificar_seguridad(pregunta)
+    nombres, pendientes = [], []
+    explicar = False
+    modo = None
     literal = texto.rstrip('.!?')
     if literal in TEMAS_LOCALES:
         return Plan((literal,), motivo='identificador_explicito', local=True)
-    nombres = []
-    accion_previa = False
-    conceptual = False
-    negada_previa = False
-    for clausula in re.split(r'\s+y\s+|[,;]|\s+(?=sin\b|pero\b|excepto\b|salvo\b)', texto):
-        temas = [n for n, patron in TEMAS_LOCALES.items() if re.search(patron, clausula)]
-        if len(temas) > 1:
-            return Plan(motivo='varios_objetos_sin_separacion_clara', local=True)
-        if re.search(NEGACION, clausula):
-            negada_previa = True
-            accion_previa = False
+    # Son restricciones sobre el mecanismo, no negaciones de la lectura.
+    texto = re.sub(r'\b(?:sin (?:usar |utilizar |solicitar )?(?:sudo|privilegios(?: administrativos)?|permisos administrativos|red|internet|conexiones externas)|no (?:uses|utilices|solicites) sudo(?: para)?)\b', '', texto)
+    clausulas = re.split(r'\s+(?:y|pero)\s+|[,;:.!?\n]+|\s+(?=explicando\b|para (?:saber|entender|conocer)|sin\s+(?:consult|comprob|ejecut|verific|revis|mirar|listar|mostrar)|excepto\b|salvo\b)', texto)
+    for clausula in clausulas:
+        clausula = clausula.strip(' ¿¡')
+        if not clausula:
             continue
-        if re.search(CONCEPTO, clausula):
-            conceptual = True
-            accion_previa = False
+        temas = [n for n, patron in TEMAS_ADQUISICION.items() if re.search(patron, clausula)]
+        if 'auditoria_seguridad' in temas and 'sistema' in temas:
+            temas.remove('sistema')
+        negada = bool(re.match(r'(?:(?:por favor)\s+)?(?:no|nunca|tampoco|sin|excepto|salvo)\b', clausula))
+        if negada:
+            if re.search(r'\b(explic\w*|interpret\w*|resum\w*)\b', clausula):
+                # Negar explicación no niega las lecturas de una enumeración.
+                continue
+            modo = 'excluida'
             continue
-        accion = bool(re.search(ACCION, clausula))
-        if temas and (accion or accion_previa and not negada_previa):
-            # "servicios" sin selector no autoriza una inspección más amplia.
-            if 'servicios_fallidos' in temas and not re.search(r'fallid|servicios_fallidos', clausula):
-                return Plan(motivo='especificar_servicios_fallidos', local=True)
+        if re.search(CONCEPTO, clausula) or re.search(r'\b(por que|como interpretar|resume|resumeme|dime si)\b', clausula):
+            explicar = True
+            modo = 'conceptual'
+            continue
+        if re.search(r'\b(?:no|sin|nunca|tampoco)\s+(?:\w+\s+){0,3}(?:consult\w*|comprob\w*|verific\w*|revis\w*|ejecut\w*)', clausula):
+            modo = 'excluida'
+            continue
+        accion = bool(re.search(ACCION, clausula) or re.search(r'\b(audita\w*|correlaciona\w*)\b', clausula)) or bool(re.search(r'\b(cuanta (?:memoria|ram) (?:tengo|queda|hay)|cuanto espacio (?:queda|tengo|hay)|cual es (?:mi |la )?ip publica)\b', clausula))
+        if not accion and modo in ('excluida', 'conceptual') and temas:
+            continue
+        motivo = None
+        interrogativa = bool(re.match(r'(?:comprueba|verifica|consulta|revisa)\s+si\b', clausula))
+        if re.search(r'\b(quizas|tal vez|podria|podrias|antes de|despues de|cuando|a menos|o)\b', clausula) or (re.search(r'\bsi\b', clausula) and not interrogativa):
+            motivo = 'alcance_condicional_o_alternativo'
+        elif re.search(r'\b(anterior\w*|obtenidos|reutiliza\w*|sin repetir|sin ejecutar|esos datos)\b', clausula):
+            motivo = 'referencia_local_sin_contexto_admitido'
+        elif re.search(r'\b(instala\w*|actualiza(?:r|me)?|reinicia\w*|borra\w*|elimina\w*|desactiva\w*|activa\w*|sudo|apt|dnf|comando|terminal|shell|bash|curl)\b', clausula):
+            motivo = 'cambio_fuera_del_alcance_de_lectura'
+        elif len(temas) > 1:
+            motivo = 'varios_objetos_sin_separacion_clara'
+        elif 'servicios_fallidos' in temas and not re.search(r'fallid|servicios_fallidos', clausula):
+            motivo = 'especificar_servicios_fallidos'
+        elif temas and (accion or modo == 'operativa'):
             nombres.extend(n for n in temas if n not in nombres)
-            accion_previa = True
-            negada_previa = False
-        elif temas:
-            return Plan(motivo='falta_accion_explicita', local=True)
-        elif clausula.strip() and not re.fullmatch(r'(?:pero )?(?:explica|resume|presenta|muestra).*', clausula.strip()):
-            return Plan(motivo='clausula_no_reconocida', local=True)
-    if seguridad:
-        return Plan(motivo='mezcla_de_alcances_no_admitida', local=True)
-    if nombres:
-        return Plan(tuple(nombres), motivo='lectura_explicita', local=True)
-    return Plan(conceptual=conceptual, motivo='concepto_o_exclusion_sin_adquisicion', local=True)
+            modo = 'operativa'
+            continue
+        else:
+            motivo = 'solicitud_no_reconocida'
+        pendientes.append(motivo)
+        modo = None
+    if not locales and re.fullmatch(r'(hola|buenos dias|buenas tardes)[!.]?', texto):
+        explicar = True
+        pendientes = []
+    return Plan(tuple(nombres), conceptual=explicar and not nombres,
+                motivo='lectura_explicita' if nombres else 'consulta_conceptual' if explicar else 'solicitud_no_reconocida',
+                local=True, explicar=explicar, pendientes=tuple(dict.fromkeys(pendientes)))
 
 
 class ContextoFactual:

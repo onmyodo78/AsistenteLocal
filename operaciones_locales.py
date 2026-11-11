@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from autonomia_herramientas import consultar_disco
+from backend_seguridad import HERRAMIENTAS_SEGURIDAD, seleccionar_backend_seguridad, estado_herramienta
 from interfaces_red import normalizar, informe_verificado
 from memoria import informe_memoria
 from servicios import informe_servicios
@@ -19,6 +20,7 @@ REQUISITOS = {
     'sistema': ('uname',), 'puertos': ('ss',), 'conexiones': ('ss',),
     'cortafuegos': ('firewall-cmd',), 'trafico_red': (sys.executable,),
     'listar_documentos': (sys.executable,),
+    'auditoria_seguridad': (sys.executable,), 'correlacion_seguridad': (sys.executable,),
 }
 BLOQUEADAS = ('ip_publica', 'diagnostico_vpn')
 
@@ -27,6 +29,8 @@ def capacidad(nombre, catalogo):
     if nombre == 'ip_publica':
         return 'no_implementada_independientemente'
     if nombre not in catalogo:
+        return 'no_disponible'
+    if nombre in HERRAMIENTAS_SEGURIDAD and estado_herramienta(nombre, seleccionar_backend_seguridad()) != 'disponible':
         return 'no_disponible'
     requisitos = REQUISITOS.get(nombre, ('curl',))
     presentes = [bool(shutil.which(n)) for n in requisitos]
@@ -95,7 +99,7 @@ def adquirir(nombre, deadline, *, ejecutar, comprobar, catalogo, memoria, interf
         else:
             lineas.append('Estado VPN desconocido; fuente no utilizable.')
         return '\n'.join(lineas), 'parcial' if valida else 'error'
-    if nombre in ('sistema', 'puertos', 'conexiones', 'cortafuegos', 'trafico_red', 'listar_documentos'):
+    if nombre in ('sistema', 'puertos', 'conexiones', 'cortafuegos', 'trafico_red', 'listar_documentos', 'auditoria_seguridad', 'correlacion_seguridad'):
         texto = consulta(nombre, deadline)
         # Mantener comandos y límites del catálogo previo. Sin atribuir éxito a
         # una salida libre; cada línea conserva su carácter de dato de herramienta.
@@ -161,3 +165,23 @@ def ejecutar_plan(plan, deadline, *, catalogo, adquirir, comprobar, limite=18000
             r.update(ejecucion='fallida' if r['ejecucion'] == 'iniciada' else 'no_iniciada', motivo='adquisicion_o_capacidad_no_verificable')
         resultados.append(r)
     return resultados
+
+
+def contexto_explicativo(resultados):
+    """Proyección efímera cerrada: sin nombres, inventarios ni salidas libres.
+
+    Solo los informes numéricos/de estados generados por Python se comparten con
+    LM Studio. Las herramientas restantes aportan únicamente su estado y alcance.
+    """
+    import re
+    contexto = []
+    for r in resultados:
+        dato = {k: r[k] for k in ('operacion', 'capacidad', 'autorizacion', 'ejecucion', 'verificacion', 'motivo')}
+        if r['ejecucion'] == 'finalizada' and r['verificacion'] in ('completo', 'parcial'):
+            if r['operacion'] in ('memoria', 'disco', 'vpn'):
+                dato['hechos_python'] = r['informe'][:6000]
+            elif r['operacion'] == 'servicios_fallidos':
+                dato['hechos_python'] = '\n'.join(linea for linea in r['informe'].splitlines()
+                    if re.fullmatch(r'Servicios fallidos observados: (?:\d+|desconocido)\.', linea))
+        contexto.append(dato)
+    return contexto

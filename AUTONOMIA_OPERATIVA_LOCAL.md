@@ -5,13 +5,15 @@ Implementación local en `mejora-coordinador`, desde `main` (`fb15c95`). No publ
 ## Entrada y alcance
 
 `motor_consultas.planificar()` conserva `Plan`, añade `tipo`, `motivo` y la marca
-interna `local`, y clasifica solicitudes operativas, conceptuales y ambiguas.
+interna `local`. La revisión de intención añade `explicar`, `pendientes` y el tipo
+`mixta`, sin cambiar los contratos de adquisición o autorización existentes.
 La gramática reconoce IDs cerrados y peticiones explícitas. No interpreta comandos,
 argumentos, destinos ni permisos proporcionados en el texto. Rechaza cambios del
-sistema, condicionales, alternativas, referencias locales sin contexto admitido y
-mezclas cuyo alcance no puede separar con seguridad. Las exclusiones se aplican
-por cláusula; una cláusula afirmativa posterior necesita acción explícita tras una
-negación. Los identificadores exactos del catálogo cuentan como selección explícita.
+sistema, condicionales, alternativas y referencias locales sin contexto admitido
+únicamente en la cláusula afectada; conserva las lecturas independientes reconocidas.
+Las exclusiones de consultas, explicaciones y privilegios tienen alcances distintos.
+Una negación factual dentro de una explicación no excluye esa explicación. Una
+cláusula afirmativa posterior necesita acción explícita tras negar una adquisición. Los identificadores exactos del catálogo cuentan como selección explícita.
 
 Ejemplos:
 
@@ -20,7 +22,11 @@ Ejemplos:
 | Comprueba la memoria | Lectura de `/proc/meminfo`, normalización e informe Python |
 | Revisa memoria y disco | Dos adquisiciones locales, sin repetición |
 | Comprueba memoria, sin consultar VPN | Solo memoria |
-| Qué es la RAM y comprueba disco | Solo adquiere disco; no llama al modelo para explicar RAM |
+| Qué es la RAM y comprueba disco | Adquiere disco; después LM Studio explica con la pregunta original completa |
+| Comprueba memoria sin sudo y explica el resultado | Lee memoria sin elevación y después explica |
+| Comprueba memoria y ejecuta id | Lee memoria; informa de la parte no reconocida sin ejecutar comandos libres |
+| Comprueba IP pública y explica qué significa | Informa del bloqueo externo y atiende la explicación |
+| Comprueba si hay memoria disponible | Consulta operativa; «si» interrogativo no equivale a una condición |
 | Cómo puedo comprobar la memoria | Respuesta conceptual, herramientas desactivadas y omitidas |
 | Mi VPN va mal | Aclaración, sin adquisición ni modelo |
 | Comprueba servicios | Solicita precisar servicios fallidos |
@@ -30,9 +36,12 @@ Ejemplos:
 | Comprueba mi IP pública | Capacidad independiente no implementada; consulta externa no ejecutada |
 
 Las auditorías básicas siguen entrando primero en su coordinador existente.
-Las auditorías de seguridad y su contexto de sesión mantienen su protocolo previo,
-incluida su interpretación opcional. La selección previa de seguridad en Debian no
-se sustituye ni se amplía su autorización. Las peticiones no reconocidas de la nueva
+Las solicitudes simples de seguridad y las referencias a su contexto de sesión
+mantienen el protocolo previo. En solicitudes mixtas o con exclusiones separables,
+las adquisiciones de seguridad usan el motor independiente existente, siempre local
+y sin CISA KEV externa, con el mismo plazo compartido. El sondeo respeta el backend
+disponible; una correlación no implementada no impide las demás partes. No se amplía
+la autorización ni se incorpora esta ruta mixta a la sesión persistente. Las peticiones no reconocidas de la nueva
 entrada pública ya no delegan adquisiciones a `tool_choice: auto`.
 
 ## Ejecución y verificación
@@ -63,10 +72,24 @@ Su salida se etiqueta como dato de herramienta, con verificación de dominio
 `no_verificable`, sin inventar éxito global ni ampliar su alcance. Conservan sus
 reglas previas de visibilidad y privacidad; no se añaden al historial.
 
-La ruta nueva presenta exclusivamente plantillas y resultados de Python. No solicita
-interpretación del modelo ni acepta propuestas de ampliación de este. La respuesta
-conceptual se identifica como texto no verificado y comprobación no realizada;
-cualquier llamada de herramienta que el modelo devuelva en ella se rechaza.
+Las lecturas puramente operativas siguen presentando resultados de Python sin
+modelo. Las preguntas conceptuales y las partes explicativas de solicitudes mixtas
+se envían a LM Studio con la pregunta original completa, herramientas desactivadas
+y omitidas, sin conceder autoridad para reabrir adquisiciones. Los informes factuales
+se presentan antes de solicitar explicación; el fallo de esta no repite adquisiciones
+ni borra los hechos. El plazo total y el presupuesto de salida son compartidos.
+
+El contexto explicativo es una proyección efímera cerrada: estados de las operaciones,
+informes numéricos de memoria/disco, estados VPN sin identificadores y recuento de
+servicios fallidos. No envía nombres de servicios, interfaces, conexiones, inventarios,
+errores originales ni las salidas libres del catálogo. No retiene un contexto nuevo
+en sesión, historial o exportaciones. Los datos omitidos se declaran desconocidos.
+
+La explicación sigue etiquetada como texto del modelo no verificado. Se rechazan
+llamadas de herramientas, respuestas incompletas y patrones explícitos de ejecución
+atribuida al modelo o de recomendación de elevación. Se permiten las explicaciones
+negativas y definiciones legítimas sobre privilegios. Estos controles acotados no
+constituyen una validación semántica general del lenguaje generado.
 
 Se mantienen los límites existentes: plazo total 120 s, hasta 15 s por comando,
 8 operaciones, salida por informe 18.000 y total 60.000 caracteres, captura de
@@ -90,8 +113,10 @@ pública ni una segunda fuente HTTPS. No se debe interpretar el flag heredado co
 habilitación de IP pública dentro del nuevo coordinador.
 
 La gramática no es un intérprete general de español. Puede pedir aclaración ante
-peticiones válidas no reconocidas. Las cláusulas conceptuales de una solicitud mixta
-no reciben explicación adicional en la respuesta operativa. No hay integración nueva
+partes válidas no reconocidas, sin cancelar las demás cláusulas seguras. La pregunta
+original se conserva para la explicación, sin reconstruirla a partir de palabras
+clave. Una explicación puede faltar si LM Studio falla, su respuesta es rechazada o
+se agota el presupuesto; se informa de ello sin volver a adquirir datos. No hay integración nueva
 con historial ni reutilización de observaciones locales anteriores. La interpretación
 libre de auditorías anteriores conserva su etiqueta de texto no verificado; estas
 fases no añaden un validador semántico general del lenguaje del modelo.
@@ -121,5 +146,12 @@ conceptuales en vez de solicitudes ambiguas que ya no deben llamar al modelo.
 No se han ejecutado actualizaciones, consultas externas reales, sudo ni integración
 real con LM Studio. No se certifica comportamiento nativo nuevo en este equipo.
 
-Resultado de esta entrega: 27 pruebas nuevas satisfactorias; regresión completa de
-1.009 pruebas sin fallos, con 12 omitidas por las condiciones del corredor.
+La entrega inicial añadió 27 pruebas. La revisión de preservación de intención añade
+23 casos (50 pruebas específicas en total) sobre solicitudes mixtas, exclusiones,
+negación de privilegios y de explicaciones, preguntas operativas interrogativas,
+partes bloqueadas o desconocidas, errores del modelo, presupuesto compartido,
+privacidad del contexto y conservación de las adquisiciones de seguridad locales.
+Los casos reprodujeron los defectos antes de corregirlos.
+
+Resultado de la revisión: regresión completa de 1.032 pruebas sin fallos, con
+12 omitidas por las condiciones del corredor. Sin validación real con LM Studio.
