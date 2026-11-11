@@ -392,9 +392,9 @@ class DiagnosticoExplicacion(unittest.TestCase):
         self.assertNotIn('stream', payload)
         self.assertEqual(payload['max_tokens'], 1800)
         self.assertEqual(payload['temperature'], .2)
-        self.assertEqual([m['role'] for m in payload['messages']], ['system', 'user', 'system'])
+        self.assertEqual([m['role'] for m in payload['messages']], ['system', 'user'])
         self.assertEqual(payload['messages'][1]['content'], self.PREGUNTA)
-        self.assertIn('4096', payload['messages'][2]['content'])
+        self.assertIn('4096', payload['messages'][0]['content'])
         self.assertIn('Modelo |', salida)
         self.assertIn('Interpretación del modelo', salida)
 
@@ -496,3 +496,80 @@ class DiagnosticoExplicacion(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     app.consultar_modelo([], solo_explicacion=True, **opciones)
             abrir.assert_not_called()
+
+
+class CompatibilidadRolesGPTOSS(unittest.TestCase):
+    """Simulación de límites del protocolo; no carga modelos ni llama a LM Studio."""
+    def fixture(self, nombre):
+        from pathlib import Path
+        return json.loads((Path(__file__).parent/'fixtures'/'lmstudio_explicacion'/nombre).read_text())
+
+    def render_fallback_reducido(self, mensajes):
+        # Doble del enrutamiento de roles observado en la plantilla GGUF local.
+        # No simula inferencia ni demuestra cuál renderer utiliza el servidor.
+        primero, *resto = mensajes
+        visibles = [primero['content']] if primero['role'] in ('system', 'developer') else []
+        return '\n'.join(visibles + [m['content'] for m in resto if m['role'] in ('user', 'assistant', 'tool')])
+
+    def test_reproduce_perdida_de_contexto_en_system_tardio(self):
+        a = self.fixture('A_system_user_system.json')
+        render = self.render_fallback_reducido(a['messages'])
+        self.assertIn(DiagnosticoExplicacion.PREGUNTA, render)
+        self.assertNotIn('RAM disponible: 4096 B.', render)
+
+    def test_disposicion_corregida_conserva_pregunta_hechos_y_restricciones(self):
+        a = self.fixture('A_system_user_system.json')
+        b = self.fixture('B_system_user.json')
+        self.assertEqual(b['messages'][0]['content'], a['messages'][0]['content']+'\n\n'+a['messages'][2]['content'])
+        self.assertEqual(b['messages'][1], a['messages'][1])
+        self.assertEqual({k:v for k,v in a.items() if k!='messages'}, {k:v for k,v in b.items() if k!='messages'})
+        render = self.render_fallback_reducido(b['messages'])
+        self.assertIn(DiagnosticoExplicacion.PREGUNTA, render)
+        self.assertIn('RAM disponible: 4096 B.', render)
+        self.assertIn('Swap libre: 2048 B.', render)
+        self.assertIn('No propongas elevar privilegios.', render)
+
+    def test_payload_produccion_coincide_con_propuesta_sintetica(self):
+        with patch.object(app, 'seleccionar_backend_seguridad', return_value={'backend': 'debian'}):
+            _, _, payload = DiagnosticoExplicacion().ciclo(DiagnosticoExplicacion().respuesta())
+        self.assertEqual(payload, self.fixture('B_system_user.json'))
+
+    def test_variantes_propuestas_cambian_una_variable_y_conservan_limites(self):
+        b = self.fixture('B_system_user.json')
+        c = self.fixture('C_sin_tool_choice.json')
+        d = self.fixture('D_reasoning_low.json')
+        e = self.fixture('E_max_completion_tokens.json')
+        self.assertEqual(c, {k:v for k,v in b.items() if k!='tool_choice'})
+        self.assertEqual(d, dict(b,reasoning_effort='low'))
+        self.assertEqual(e, dict({k:v for k,v in b.items() if k!='max_tokens'}, max_completion_tokens=1800))
+        for p in (b,c,d,e):
+            self.assertNotIn('tools', p)
+            self.assertNotIn('response_format', p)
+            self.assertEqual(p.get('max_tokens',p.get('max_completion_tokens')),1800)
+            self.assertEqual(p['messages'],b['messages'])
+
+    def test_separacion_de_razonamiento_no_borra_final_en_parser(self):
+        # La misma parte final se acepta con/sin campos de razonamiento separados.
+        for campo in (None, 'reasoning', 'reasoning_content'):
+            r = DiagnosticoExplicacion().respuesta('La swap respalda memoria virtual en almacenamiento.')
+            if campo:
+                r['choices'][0]['message'][campo] = 'PRIVADO_NO_PUBLICAR'
+            salida, datos, _ = DiagnosticoExplicacion().ciclo(r)
+            self.assertIsNone(datos['tipo_error'])
+            self.assertIn('La swap respalda', salida)
+            self.assertNotIn('PRIVADO_NO_PUBLICAR', salida)
+
+    def test_33_tokens_con_6_de_razonamiento_no_garantizan_final(self):
+        for contenido, rechazado in (('', True), ('La swap respalda memoria virtual.', False)):
+            r = DiagnosticoExplicacion().respuesta(contenido)
+            r['usage']['completion_tokens_details'] = {'reasoning_tokens':6}
+            r['choices'][0]['message']['reasoning'] = 'PRIVADO_NO_PUBLICAR'
+            salida, datos, _ = DiagnosticoExplicacion().ciclo(r)
+            self.assertEqual(datos['finish_reason'],'stop')
+            self.assertEqual(datos['uso_tokens']['completion_tokens'],33)
+            self.assertEqual(datos['uso_tokens']['completion_tokens_details']['reasoning_tokens'],6)
+            self.assertEqual(datos['tipo_error'] is not None,rechazado)
+            if rechazado:
+                self.assertEqual(datos['motivo_validacion'],'sin_texto_ni_herramientas')
+                self.assertTrue(datos['forma_respuesta']['content_vacio'])
+            self.assertNotIn('PRIVADO_NO_PUBLICAR',salida)

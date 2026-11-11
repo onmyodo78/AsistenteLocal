@@ -10,6 +10,7 @@ CHANGELOG.md
 CIERRE_TECNICO_FEDORA.md
 CORRECCION_DNF5_547.md
 DIAGNOSTICO_CONTINUACION_AUDITORIA.md
+DIAGNOSTICO_GPTOSS_FINAL_VACIO.md
 DIAGNOSTICO_HTTP_LOCAL.md
 DIAGNOSTICO_LATENCIA_AUDITORIA.md
 DIAGNOSTICO_MANTENIMIENTO_APT.md
@@ -99,6 +100,11 @@ tests/ejecutar_regresion_motor.py
 tests/evidencia_local.py
 tests/fixtures/interfaces_ip.json
 tests/fixtures/interfaces_nm.txt
+tests/fixtures/lmstudio_explicacion/A_system_user_system.json
+tests/fixtures/lmstudio_explicacion/B_system_user.json
+tests/fixtures/lmstudio_explicacion/C_sin_tool_choice.json
+tests/fixtures/lmstudio_explicacion/D_reasoning_low.json
+tests/fixtures/lmstudio_explicacion/E_max_completion_tokens.json
 tests/fixtures/meminfo.txt
 tests/fixtures/puertos_locales.txt
 tests/fixtures/servicios_fallidos.txt

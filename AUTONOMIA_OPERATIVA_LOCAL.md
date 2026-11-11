@@ -210,3 +210,8 @@ vacío, solo espacios, no textual, campos adicionales, JSON/roles inválidos,
 llamadas de herramientas, finales, filtro textual y privacidad de las métricas.
 Regresión completa: 1.043 pruebas sin fallos, con 12 omitidas. Sin consultas reales,
 reintentos automáticos nuevos, cambios de permisos ni relajación global del validador.
+
+Investigación posterior del final vacío: [inspección GPT-OSS y propuestas exactas,
+aún sin ejecutar](DIAGNOSTICO_GPTOSS_FINAL_VACIO.md). El defecto de roles demostrado
+en la plantilla Jinja se corrige agrupando los dos system antes del user. No se
+relaciona causalmente con el final vacío sin comprobar la ruta activa del servidor.
