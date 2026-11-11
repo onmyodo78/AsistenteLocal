@@ -35,7 +35,7 @@ class Clasificacion(unittest.TestCase):
                       'Comprueba memoria o disco', 'Si falla la VPN comprueba memoria',
                       'Actualiza el sistema', 'Reinicia servicios',
                       'Comprueba conexiones de la VPN', 'Comprueba memoria disco', 'Comprueba memoria con sudo',
-                      'Comprueba memoria usando comando id', 'Reutiliza la memoria anterior',
+                      'Comprueba memoria usando comando id',
                       'No compruebes memoria y disco'):
             with self.subTest(texto=texto):
                 p = planificar(texto)
@@ -638,6 +638,171 @@ class PreservacionIntencion(unittest.TestCase):
         self.assertEqual(len(r), 1)
         self.assertEqual(r[0]['operacion'], 'memoria')
         self.assertIn('Parte pendiente', self.salida.getvalue())
+
+
+class MemoriaAnterior(unittest.TestCase):
+    setUp = Integracion.setUp
+    PETICION = 'Interpreta los resultados anteriores de memoria sin repetir la consulta.'
+
+    def fuente(self, parcial=False):
+        return normalizar_memoria(dict(estado='correcta', codigo=0, avisos=False,
+            stdout='MemTotal: 100 kB\nMemAvailable: 40 kB\nSwapTotal: 20 kB\n' +
+                   ('' if parcial else 'SwapFree: 20 kB\n')))
+
+    def modelo_valido(self):
+        self.modelo.side_effect = None
+        self.modelo.return_value = {'choices': [{'message': {
+            'role': 'assistant', 'content': 'Una instantánea no mide actividad sostenida.'},
+            'finish_reason': 'stop'}]}
+
+    def test_clasificacion_reutilizacion_acotada(self):
+        for texto in (self.PETICION, 'Interpreta los resultados anteriores de memoria',
+                      'Reutiliza la memoria anterior'):
+            with self.subTest(texto=texto):
+                p = planificar(texto)
+                self.assertTrue(p.reutilizar)
+                self.assertEqual(p.nombres, ('memoria',))
+                self.assertTrue(p.local)
+        self.assertFalse(planificar('Interpreta los resultados anteriores de disco sin repetir la consulta').reutilizar)
+        self.assertFalse(planificar('No interpretes los resultados anteriores de memoria').reutilizar)
+
+    def test_secuencia_guarda_y_recupera_sin_adquirir(self):
+        contexto = ContextoFactual()
+        self.modelo_valido()
+        with patch.object(app, 'consultar_memoria_verificada', return_value=self.fuente()) as memoria:
+            app.preguntar('Comprueba la memoria RAM y la swap de mi equipo.', contexto=contexto)
+            self.modelo.assert_not_called()
+            self.assertIn('memoria', contexto.consultar())
+            app.preguntar(self.PETICION, contexto=contexto)
+        memoria.assert_called_once()
+        self.modelo.assert_called_once()
+        mensajes = self.modelo.call_args.args[0]
+        self.assertEqual([m['role'] for m in mensajes], ['system', 'user'])
+        self.assertIn('40960 B', mensajes[0]['content'])
+        self.assertIn('instantánea anterior', mensajes[0]['content'])
+        self.assertIn('no es una adquisición nueva', mensajes[0]['content'])
+        self.assertEqual(mensajes[1]['content'], self.PETICION)
+        self.assertFalse(self.modelo.call_args.kwargs['permitir_herramientas'])
+        self.assertTrue(self.modelo.call_args.kwargs['omitir_tools'])
+        self.assertIn('no verificada', self.salida.getvalue())
+
+    def test_contexto_ausente_o_caducado_no_adquiere(self):
+        ahora = [0.]
+        c = ContextoFactual(reloj=lambda: ahora[0])
+        c.guardar('memoria', 'DATO_CADUCADO')
+        ahora[0] = 1800.
+        self.modelo_valido()
+        for contexto in (None, ContextoFactual(), c):
+            with self.subTest(contexto=contexto), patch.object(app, 'consultar_memoria_verificada') as memoria:
+                self.modelo.reset_mock()
+                app.preguntar(self.PETICION, contexto=contexto)
+                memoria.assert_not_called()
+                self.modelo.assert_not_called()
+                self.assertIn('no hay evidencia vigente', self.salida.getvalue())
+                self.assertNotIn('DATO_CADUCADO', self.salida.getvalue())
+
+    def test_timeout_explicacion_no_pierde_instantanea(self):
+        c = ContextoFactual()
+        self.modelo.side_effect = TimeoutError('PRIVADO')
+        with patch.object(app, 'consultar_memoria_verificada', return_value=self.fuente()) as memoria:
+            app.preguntar('Comprueba memoria y explica el resultado', contexto=c)
+            self.assertIn('40960 B', c.consultar()['memoria'][1])
+            self.modelo_valido()
+            self.modelo.reset_mock()
+            app.preguntar(self.PETICION, contexto=c)
+        memoria.assert_called_once()
+        self.modelo.assert_called_once()
+        self.assertNotIn('PRIVADO', str(c.consultar()))
+
+    def test_adquisicion_fallida_invalida_exito_anterior(self):
+        for error in (PermissionError('PRIVADO'), TimeoutError('PRIVADO'), KeyboardInterrupt()):
+            with self.subTest(error=type(error).__name__):
+                c = ContextoFactual()
+                c.guardar('memoria', 'EXITO_ANTIGUO')
+                with patch.object(app, 'consultar_memoria_verificada', side_effect=error):
+                    app.preguntar('Comprueba memoria', contexto=c)
+                self.assertNotIn('memoria', c.consultar())
+                self.modelo_valido()
+                self.modelo.reset_mock()
+                app.preguntar(self.PETICION, contexto=c)
+                self.modelo.assert_not_called()
+                self.assertNotIn('EXITO_ANTIGUO', self.salida.getvalue())
+                self.assertNotIn('PRIVADO', self.salida.getvalue())
+                self.assertIn('no hay evidencia vigente', self.salida.getvalue())
+
+    def test_invalidacion_explicita_no_afecta_seguridad(self):
+        c = ContextoFactual()
+        for nombre in ('auditoria_seguridad', 'correlacion_seguridad', 'memoria'):
+            c.guardar(nombre, 'Hecho de Python')
+        c.invalidar('memoria')
+        c.invalidar('memoria')
+        self.assertEqual(set(c.consultar()), {'auditoria_seguridad', 'correlacion_seguridad'})
+        with self.assertRaises(ValueError):
+            c.invalidar('disco')
+
+    def test_invalidacion_precede_adquisicion_y_error_no_guarda_control(self):
+        c = ContextoFactual()
+        c.guardar('memoria', 'EXITO_ANTIGUO')
+        def adquirir(deadline):
+            self.assertNotIn('memoria', c.consultar())
+            return normalizar_memoria(dict(estado='error_lectura', codigo=None,
+                                          stdout='', avisos=False))
+        with patch.object(app, 'consultar_memoria_verificada', side_effect=adquirir) as memoria:
+            app.preguntar('Comprueba memoria', contexto=c)
+            app.preguntar(self.PETICION, contexto=c)
+        memoria.assert_called_once()
+        self.modelo.assert_not_called()
+        self.assertNotIn('memoria', c.consultar())
+
+    def test_informe_excesivo_no_se_guarda_ni_se_trunca_como_hecho(self):
+        c = ContextoFactual()
+        c.guardar('memoria', 'EXITO_ANTIGUO')
+        with patch.object(locales, 'adquirir', return_value=('X' * 6001, 'completo')):
+            app.preguntar('Comprueba memoria', contexto=c)
+        self.assertNotIn('memoria', c.consultar())
+
+    def test_parcial_conserva_desconocidos_y_limites(self):
+        c = ContextoFactual()
+        self.modelo_valido()
+        with patch.object(app, 'consultar_memoria_verificada', return_value=self.fuente(parcial=True)) as memoria:
+            app.preguntar('Comprueba memoria', contexto=c)
+            app.preguntar(self.PETICION, contexto=c)
+        memoria.assert_called_once()
+        texto = c.consultar()['memoria'][1]
+        self.assertIn('parcial', texto)
+        self.assertIn('desconocid', texto.lower())
+        self.assertLessEqual(len(texto), 6000)
+
+    def test_sesion_habitual_y_nueva_adquisicion(self):
+        c = ContextoFactual()
+        token = app._CONTEXTO_FACTUAL.set(c)
+        self.addCleanup(app._CONTEXTO_FACTUAL.reset, token)
+        self.modelo_valido()
+        with patch.object(app, 'consultar_memoria_verificada', return_value=self.fuente()) as memoria:
+            app.preguntar('Comprueba memoria')
+            app.preguntar(self.PETICION)
+            app.preguntar('Comprueba memoria de nuevo')
+        self.assertEqual(memoria.call_count, 2)
+        self.modelo.assert_called_once()
+        self.assertIn('memoria', c.consultar())
+
+    def test_conceptual_no_crea_hechos(self):
+        c = ContextoFactual()
+        self.modelo_valido()
+        with patch.object(app, 'consultar_memoria_verificada') as memoria:
+            app.preguntar('Explícame qué significa tener 22 GiB de RAM disponible', contexto=c)
+        memoria.assert_not_called()
+        self.assertFalse(c.consultar())
+
+    def test_contexto_no_desplaza_seguridad_ni_admite_otras_lecturas(self):
+        c = ContextoFactual()
+        for nombre in ('auditoria_seguridad', 'correlacion_seguridad', 'memoria'):
+            c.guardar(nombre, 'Hecho de Python')
+        self.assertEqual(set(c.consultar()), {'auditoria_seguridad', 'correlacion_seguridad', 'memoria'})
+        with self.assertRaises(ValueError):
+            c.guardar('disco', 'No admitido')
+        c.cerrar()
+        self.assertFalse(c.consultar())
 
 
 if __name__ == '__main__':

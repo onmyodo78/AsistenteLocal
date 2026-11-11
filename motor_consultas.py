@@ -5,7 +5,8 @@ import time
 import unicodedata
 
 NOMBRES = ('auditoria_seguridad', 'correlacion_seguridad')
-MAX_HECHOS = 2
+NOMBRES_CONTEXTO = NOMBRES + ('memoria',)
+MAX_HECHOS = 3
 MAX_TEXTO = 6000
 VIDA_SEGUNDOS = 1800
 
@@ -109,6 +110,13 @@ def planificar(pregunta):
     conceptos o fragmentos cuyo alcance no está resuelto.
     """
     texto = normalizar(pregunta).strip()
+    # Reutilización local cerrada: no es una adquisición ni un permiso nuevo.
+    if re.fullmatch(
+            r'(?:interpreta|explica(?:me)?|reutiliza)\s+'
+            r'(?:(?:los\s+)?(?:resultados|datos)\s+(?:anteriores|obtenidos)\s+de\s+(?:la\s+)?(?:memoria|ram|swap)'
+            r'|(?:la\s+)?(?:memoria|ram|swap)\s+anterior)'
+            r'(?:\s+sin\s+(?:repetir|ejecutar)(?:\s+la)?\s+consulta)?[.!?]?', texto):
+        return Plan(('memoria',), reutilizar=True, local=True, motivo='instantanea_memoria_anterior')
     locales = any(re.search(patron, texto) for patron in TEMAS_LOCALES.values())
     seguridad = bool(re.search(r'\b(auditoria|audita\w*|seguridad|actualizaciones|paquetes|correlacion|cve|vulnerabilidades|auditoria_seguridad|correlacion_seguridad)\b', texto))
     separable = bool(re.search(r'\b(y|pero)\b|[,;]|\S\s+sin (?:consult|ejecut|comprob)', texto))
@@ -200,7 +208,7 @@ class ContextoFactual:
         self._hechos = {}
 
     def guardar(self, nombre, texto):
-        if nombre not in NOMBRES or not isinstance(texto, str) or len(texto) > MAX_TEXTO:
+        if nombre not in NOMBRES_CONTEXTO or not isinstance(texto, str) or len(texto) > MAX_TEXTO:
             raise ValueError('Hecho fuera del contrato de sesión')
         self._hechos[nombre] = (self._reloj(), texto)
         while len(self._hechos) > MAX_HECHOS:
@@ -212,6 +220,12 @@ class ContextoFactual:
                         if 0 <= ahora - t < VIDA_SEGUNDOS}
         return {n: (int(ahora - t), s) for n, (t, s) in self._hechos.items()
                 if not nombres or n in nombres}
+
+    def invalidar(self, nombre):
+        """Retira una entrada sin convertir un estado de control en evidencia."""
+        if nombre not in NOMBRES_CONTEXTO:
+            raise ValueError('Hecho fuera del contrato de sesión')
+        self._hechos.pop(nombre, None)
 
     def cerrar(self):
         self._hechos.clear()

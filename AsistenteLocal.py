@@ -42,7 +42,7 @@ from resultado_verificado import ResultadoVerificado, adaptar_interfaces, adapta
 from sesion_resultados import ColeccionSesion
 from exportacion_interfaz import InterfazExportacion, COMANDO as COMANDO_EXPORTAR
 from historial_contratos import adaptar_auditoria as sanear_auditoria
-from motor_consultas import ContextoFactual, planificar, _planificar_seguridad
+from motor_consultas import ContextoFactual, planificar, _planificar_seguridad, MAX_TEXTO as MAX_CONTEXTO_FACTUAL
 from informes_factuales import (
     resumen_factual_debian, informe_correlacion_debian, informe_fallo_adquisicion,
 )
@@ -899,6 +899,10 @@ def mostrar_interpretacion(texto, con_hechos=True):
 
 def interpretar_contexto(pregunta, contexto, nombres, deadline):
     hechos = contexto.consultar(nombres) if contexto is not None else {}
+    if nombres == ('memoria',) and 'memoria' not in hechos:
+        mostrar_informe_factual('No hay contexto de memoria disponible: no hay evidencia vigente en la sesión. '
+                                'No se repite la consulta ni se solicita interpretación al modelo.')
+        return
     lineas = []
     for nombre in nombres or tuple(hechos):
         if nombre in hechos:
@@ -1091,6 +1095,10 @@ def preguntar(pregunta, coleccion=None, contexto=None):
     if not plan.local and (plan.nombres or plan.reutilizar):
         return _preguntar_con_herramientas(pregunta, coleccion, contexto)
     deadline = time.monotonic() + MAX_SECONDS
+    if contexto is None:
+        contexto = _CONTEXTO_FACTUAL.get()
+    if plan.local and plan.reutilizar:
+        return interpretar_contexto(pregunta, contexto, plan.nombres, deadline)
     limitaciones = {
         'alcance_condicional_o_alternativo': 'Parte pendiente: falta concretar una condición o alternativa; esa parte no se ejecuta.',
         'referencia_local_sin_contexto_admitido': 'Parte pendiente: no hay contexto local reutilizable admitido para esa referencia.',
@@ -1135,16 +1143,25 @@ def preguntar(pregunta, coleccion=None, contexto=None):
                         catalogo=TOOLS, memoria=consultar_memoria_verificada,
                         interfaces=consultar_interfaces, servicios=consultar_servicios_verificados,
                         limite=limite, consulta=ejecutar_consulta)
+    if contexto is not None and 'memoria' in plan.nombres:
+        # Invalidar antes del intento: un fallo o cancelación no conserva éxito viejo.
+        contexto.invalidar('memoria')
     resultados = ejecutar_plan(plan, deadline, catalogo=TOOLS, adquirir=lectura,
                               comprobar=restante, limite=MAX_OUTPUT,
                               total=MAX_TOTAL_OUTPUT, llamadas=MAX_CALLS)
-    # Los hechos preceden a la explicación; no se añaden lecturas a sesión/historial.
+    # Solo memoria conserva una instantánea efímera; no se añade al historial.
     for resultado in resultados:
         try:
             restante(deadline)
         except TimeoutError:
             resultado.update(verificacion='no_verificable', motivo='plazo_agotado_antes_de_publicar',
                              informe='Informe omitido: plazo agotado antes de publicar; no se presentan datos tardíos.')
+        if (contexto is not None and resultado['operacion'] == 'memoria'
+                and resultado['ejecucion'] == 'finalizada'
+                and resultado['verificacion'] in ('completo', 'parcial')):
+            hecho = 'Verificación de memoria: ' + resultado['verificacion'] + '.\n' + resultado['informe']
+            if len(hecho) <= MAX_CONTEXTO_FACTUAL:
+                contexto.guardar('memoria', hecho)
         texto = '\n'.join([
             'Operación: ' + resultado['operacion'],
             'Capacidad: ' + resultado['capacidad'],
