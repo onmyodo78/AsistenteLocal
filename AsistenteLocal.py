@@ -77,7 +77,9 @@ TRUNCATED = "\n[RESULTADO TRUNCADO: faltan datos]"
 
 
 class RespuestaInvalida(ValueError):
-    pass
+    def __init__(self, mensaje='', *, codigo=None):
+        super().__init__(mensaje)
+        self.codigo = codigo
 
 
 def sanear(texto):
@@ -533,25 +535,25 @@ def listar_documentos():
 
 def validar_respuesta(respuesta):
     if not isinstance(respuesta, dict):
-        raise RespuestaInvalida("LM Studio devolvió una respuesta que no es un objeto.")
+        raise RespuestaInvalida("LM Studio devolvió una respuesta que no es un objeto.", codigo="respuesta_no_objeto")
     choices = respuesta.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-        raise RespuestaInvalida("LM Studio no devolvió choices válidas.")
+        raise RespuestaInvalida("LM Studio no devolvió choices válidas.", codigo="choices_invalidas")
     mensaje = choices[0].get("message")
     if not isinstance(mensaje, dict) or mensaje.get("role") != "assistant":
-        raise RespuestaInvalida("Mensaje assistant ausente o inválido.")
+        raise RespuestaInvalida("Mensaje assistant ausente o inválido.", codigo="assistant_invalido")
     contenido = mensaje.get("content")
     if contenido is not None and not isinstance(contenido, str):
-        raise RespuestaInvalida("El contenido del modelo no es texto.")
+        raise RespuestaInvalida("El contenido del modelo no es texto.", codigo="contenido_no_textual")
     llamadas = mensaje.get("tool_calls", [])
     if llamadas is None:
         llamadas = []
     if not isinstance(llamadas, list) or len(llamadas) > MAX_CALLS_PER_RESPONSE:
-        raise RespuestaInvalida("Número o formato de llamadas de herramienta no permitido.")
+        raise RespuestaInvalida("Número o formato de llamadas de herramienta no permitido.", codigo="llamadas_invalidas")
     ids = set()
     for llamada in llamadas:
         if not isinstance(llamada, dict):
-            raise RespuestaInvalida("Llamada de herramienta inválida.")
+            raise RespuestaInvalida("Llamada de herramienta inválida.", codigo="llamada_invalida")
         ident = llamada.get("id")
         funcion = llamada.get("function")
         if (not isinstance(ident, str) or not ident or ident in ids
@@ -559,20 +561,23 @@ def validar_respuesta(respuesta):
                 or not isinstance(funcion.get("name"), str)
                 or not funcion["name"]
                 or not isinstance(funcion.get("arguments"), str)):
-            raise RespuestaInvalida("Llamada incompleta, duplicada o mal formada.")
+            raise RespuestaInvalida("Llamada incompleta, duplicada o mal formada.", codigo="llamada_malformada")
         ids.add(ident)
     if not llamadas and not contenido:
-        raise RespuestaInvalida("El modelo no devolvió texto ni herramientas.")
+        raise RespuestaInvalida("El modelo no devolvió texto ni herramientas.", codigo="sin_texto_ni_herramientas")
     return {"role": "assistant", "content": contenido, "tool_calls": llamadas}
 
 
-def consultar_modelo(messages, deadline=None, permitir_herramientas=True, omitir_tools=False, *, interpretacion=False):
+def consultar_modelo(messages, deadline=None, permitir_herramientas=True, omitir_tools=False, *, interpretacion=False, solo_explicacion=False):
     medicion = MedicionHTTP()
     fallo = None
     try:
         if type(interpretacion) is not bool or (interpretacion and
                 (permitir_herramientas is not False or omitir_tools is not True)):
             raise ValueError("Interpretación requiere herramientas desactivadas y omitidas")
+        if type(solo_explicacion) is not bool or (solo_explicacion and
+                (permitir_herramientas is not False or omitir_tools is not True)):
+            raise ValueError('Explicación requiere herramientas desactivadas y omitidas')
         limite_modelo = MAX_INTERPRETATION_SECONDS if interpretacion else MAX_MODEL_SECONDS
         if deadline is None:
             deadline = time.monotonic() + MAX_SECONDS
@@ -633,16 +638,18 @@ def consultar_modelo(messages, deadline=None, permitir_herramientas=True, omitir
                 datos.extend(bloque)
                 medicion.datos['bytes_cuerpo'] = len(datos)
                 if len(datos) > MAX_HTTP_BYTES:
-                    raise RespuestaInvalida("Respuesta HTTP demasiado grande.")
+                    raise RespuestaInvalida("Respuesta HTTP demasiado grande.", codigo="http_excesivo")
             medicion.fase('cierre')
         medicion.fase('validacion')
         restante(deadline)
         try:
             respuesta = json.loads(datos)
         except (ValueError, UnicodeError, RecursionError) as error:
-            raise RespuestaInvalida("LM Studio devolvió JSON inválido.") from error
+            raise RespuestaInvalida("LM Studio devolvió JSON inválido.", codigo="json_invalido") from error
         medicion.respuesta(respuesta)
         validar_respuesta(respuesta)
+        if solo_explicacion:
+            validar_explicacion(respuesta)
         restante(deadline)
         return respuesta
     except BaseException as error:
@@ -1007,6 +1014,27 @@ def interpretar_auditoria_basica(traza, deadline, salida_factual):
     print('\nInterpretación de LM Studio no disponible: '+motivo+'. '
           'Se conserva el informe factual de Python; no se reintenta ni se repiten adquisiciones.')
 
+def validar_explicacion(respuesta):
+    """Contrato acotado a explicación; no promueve razonamiento a respuesta."""
+    mensaje = validar_respuesta(respuesta)
+    original = respuesta['choices'][0]['message']
+    if mensaje['tool_calls'] or original.get('function_call') is not None:
+        raise RespuestaInvalida('herramientas_en_explicacion', codigo='herramientas_en_explicacion')
+    if respuesta['choices'][0].get('finish_reason') not in (None, 'stop'):
+        raise RespuestaInvalida('explicacion_no_final', codigo='explicacion_no_final')
+    if not mensaje['content'].strip():
+        raise RespuestaInvalida('explicacion_vacia', codigo='explicacion_vacia')
+    import re
+    from motor_consultas import normalizar
+    texto = normalizar(mensaje['content'])
+    texto_guardia = re.sub(r'\b(no (?:necesitas|debes)(?: ejecutar| usar| utilizar)?|no (?:uses|utilices)|sin (?:usar|utilizar)|no es necesario (?:ejecutar|usar|utilizar))\s+(?:sudo|pkexec|root|privilegios administrativos)\b', '', texto)
+    texto_guardia = re.sub(r'\bno (?:he|hemos|se ha|se han)\s+(?:ejecutado|comprobado|consultado|verificado|instalado|actualizado)\b', '', texto_guardia)
+    if re.search(r'\b(he|hemos|se ha|se han)\s+(ejecutado|comprobado|consultado|verificado|instalado|actualizado)\b', texto_guardia) or re.search(
+            r'(?:(?:^|[.!?\n:]\s*)(?:[-*]\s+)?(?:ejecuta|usa|utiliza|solicita)|\b(?:debes|necesitas|recomiendo|puedes usar|puedes ejecutar))\b[^.\n]{0,60}\b(sudo|pkexec|root|privilegios administrativos)\b', texto_guardia):
+        raise RespuestaInvalida('afirmacion_operativa_o_recomendacion_administrativa', codigo='afirmacion_operativa_o_recomendacion_administrativa')
+    return mensaje
+
+
 def _explicar_peticion_local(pregunta, resultados, pendientes, deadline, limite):
     """Explica la petición íntegra sin adquirir ni conceder autoridad al modelo."""
     from operaciones_locales import contexto_explicativo
@@ -1028,27 +1056,21 @@ def _explicar_peticion_local(pregunta, resultados, pendientes, deadline, limite)
     respuesta_validada = False
     try:
         restante(deadline)
-        respuesta = consultar_modelo(mensajes, deadline, permitir_herramientas=False, omitir_tools=True)
+        respuesta = consultar_modelo(mensajes, deadline, permitir_herramientas=False, omitir_tools=True, solo_explicacion=True)
         mensaje = validar_respuesta(respuesta)
         respuesta_validada = True
         restante(deadline)
-        if mensaje['tool_calls'] or respuesta['choices'][0].get('finish_reason') in ('length', 'content_filter'):
-            raise RespuestaInvalida('explicacion_no_final')
-        import re
-        from motor_consultas import normalizar
-        texto = normalizar(mensaje['content'])
-        texto_guardia = re.sub(r'\b(no (?:necesitas|debes)(?: ejecutar| usar| utilizar)?|no (?:uses|utilices)|sin (?:usar|utilizar)|no es necesario (?:ejecutar|usar|utilizar))\s+(?:sudo|pkexec|root|privilegios administrativos)\b', '', texto)
-        texto_guardia = re.sub(r'\bno (?:he|hemos|se ha|se han)\s+(?:ejecutado|comprobado|consultado|verificado|instalado|actualizado)\b', '', texto_guardia)
-        if re.search(r'\b(he|hemos|se ha|se han)\s+(ejecutado|comprobado|consultado|verificado|instalado|actualizado)\b', texto_guardia) or re.search(
-                r'(?:(?:^|[.!?\n:]\s*)(?:[-*]\s+)?(?:ejecuta|usa|utiliza|solicita)|\b(?:debes|necesitas|recomiendo|puedes usar|puedes ejecutar))\b[^.\n]{0,60}\b(sudo|pkexec|root|privilegios administrativos)\b', texto_guardia):
-            raise RespuestaInvalida('afirmacion_operativa_o_recomendacion_administrativa')
+        mensaje = validar_explicacion(respuesta)
     except (TimeoutError, OSError, http.client.HTTPException, RespuestaInvalida) as error:
         if not resultados and not respuesta_validada:
             raise
         if isinstance(error, urllib.error.HTTPError):
             error.close()
+        from lmstudio_metrics import motivo_validacion
+        motivo = motivo_validacion(error)
+        detalle = (' Motivo de validación: ' + motivo + '.') if motivo else ''
         mostrar_informe_factual(limitar('Explicación no disponible o rechazada; se conservan los hechos y limitaciones anteriores. '
-                                       'No se repiten adquisiciones.', limite))
+                                       'No se repiten adquisiciones.' + detalle, limite))
         return
     mostrar_interpretacion(limitar(mensaje['content'], limite), con_hechos=any(r['ejecucion'] != 'no_iniciada' for r in resultados))
 

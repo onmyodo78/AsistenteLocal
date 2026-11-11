@@ -155,3 +155,58 @@ Los casos reprodujeron los defectos antes de corregirlos.
 
 Resultado de la revisión: regresión completa de 1.032 pruebas sin fallos, con
 12 omitidas por las condiciones del corredor. Sin validación real con LM Studio.
+
+## Diagnóstico de rechazos de explicación
+
+La prueba funcional con HTTP 200, `finish_reason=stop`, 1331 tokens de entrada y 33
+de salida no permite determinar la forma de `message`. En la versión anterior,
+`fase_error=validacion` y `tipo_error=RespuestaInvalida`, junto con finish reason y
+uso ya extraídos, sitúan el fallo después de decodificar JSON y dentro del validador
+estructural de `consultar_modelo`. El filtro textual de la explicación se ejecutaba
+después de emitir esas métricas: no explica ese registro concreto. Tampoco había
+un mínimo de longitud de texto que rechazase por sí mismo una explicación breve.
+
+Payload conservado: POST al único endpoint local
+`http://127.0.0.1:1234/v1/chat/completions`, modelo `openai/gpt-oss-20b`,
+`temperature=0.2`, `max_tokens=1800`, `tool_choice=none`, sin `tools`, `stream`,
+`response_format` ni `reasoning_effort`. Los mensajes siguen siendo system con las
+reglas, user con la pregunta original completa y system con la proyección factual
+reducida. El modo interno `solo_explicacion` no añade campos al payload, no modifica
+el plazo de 45 s del modelo ni el plazo global de 120 s, y exige herramientas
+omitidas y desactivadas. El planificador no cambia.
+
+El contrato sigue siendo Chat Completions: objeto JSON, `choices` no vacío, primer
+`message` con `role=assistant` y contenido textual público. Una respuesta breve no
+vacía se admite. Los campos adicionales, incluido razonamiento separado, no se
+usan como texto público. No se adaptan listas de contenido, otros endpoints ni
+formatos Harmony sin evidencia de que sea el formato servido. `tool_calls=null`
+sigue siendo ausencia de llamadas; las llamadas efectivas, también el campo legado
+`function_call`, se rechazan en la explicación. Se rechazan contenido solo de
+espacios y finales distintos de `stop` o del campo omitido/nulo ya admitido.
+
+El filtro textual previo se extrae a `validar_explicacion` y se aplica dentro de la
+fase de validación HTTP cuando se solicita ese modo. Así los rechazos estructurales
+y los del filtro textual quedan diferenciados. Se conserva su comprobación en el
+consumidor para dobles y otros llamadores; nunca habilita ejecución de herramientas.
+
+Cada rechazo tiene ahora un código cerrado (`motivo_validacion`) y las métricas
+incluyen `forma_respuesta`: tipo de contenido, vacío/solo espacios y presencia de
+campos conocidos de razonamiento o herramientas. Ambas proyecciones se sanean de
+nuevo en el emisor. No se registran prompts, respuestas, razonamiento, nombres de
+campos desconocidos ni mensajes originales de excepciones. El aviso al usuario
+puede incluir el código seguro; conserva el informe factual y no reintenta.
+
+Una simulación con `content=null` y `reasoning_content` separado reproduce exactamente
+la combinación HTTP 200/stop/33 tokens y el rechazo estructural, ahora identificado
+como `sin_texto_ni_herramientas`. Otras formas inválidas también podrían explicar
+el registro anterior. Es una reproducción posible, **no la causa real confirmada**.
+Sin la estructura de la respuesta real o los nuevos metadatos no se puede elegir
+entre esas causas. La compatibilidad del formato Chat Completions se prueba con
+dobles; no se certifica aquí la configuración real de LM Studio o su plantilla del
+modelo. No se convierte razonamiento en respuesta para evitar el rechazo.
+
+Validación: 11 regresiones nuevas de payload, respuesta corta, contenido ausente,
+vacío, solo espacios, no textual, campos adicionales, JSON/roles inválidos,
+llamadas de herramientas, finales, filtro textual y privacidad de las métricas.
+Regresión completa: 1.043 pruebas sin fallos, con 12 omitidas. Sin consultas reales,
+reintentos automáticos nuevos, cambios de permisos ni relajación global del validador.
