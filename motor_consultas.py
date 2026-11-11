@@ -39,6 +39,9 @@ def _planificar_seguridad(pregunta):
     Una comprobación explícita es nueva; solo las referencias al pasado reutilizan.
     """
     texto = normalizar(pregunta)
+    if re.match(r'\s*(?:no|sin|nunca|tampoco)\s+(?:me\s+)?(?:expli(?:ca|que)\w*|interpret\w*|resum\w*)\b', texto):
+        # Excluir una explicación no solicita otra ni reutiliza hechos anteriores.
+        return Plan()
     conceptual = es_conceptual(texto.strip(' ¿¡'))
     negada = bool(re.search(r'\b(no|sin)\s+(?:\w+\s+){0,2}(ejecut|consult|audit|comprob|correlacion|repit|repet)', texto))
     nueva = bool(re.search(r'\b(nueva|nuevo|actualiza|repite|repetir|otra vez|de nuevo|ahora)\b', texto)) and not negada
@@ -149,7 +152,13 @@ def planificar(pregunta):
         if re.search(r'\b(?:no|sin|nunca|tampoco)\s+(?:\w+\s+){0,3}(?:consult\w*|comprob\w*|verific\w*|revis\w*|ejecut\w*)', clausula):
             modo = 'excluida'
             continue
-        accion = bool(re.search(ACCION, clausula) or re.search(r'\b(audita\w*|correlaciona\w*)\b', clausula)) or bool(re.search(r'\b(cuanta (?:memoria|ram) (?:tengo|queda|hay)|cuanto espacio (?:queda|tengo|hay)|cual es (?:mi |la )?ip publica)\b', clausula))
+        acciones = re.findall(ACCION, clausula) + re.findall(r'\b(audita\w*|correlaciona\w*)\b', clausula)
+        # Los infinitivos coordinados siguen bajo la explicación anterior:
+        # «diferencia entre consultar memoria y revisar disco». Una orden
+        # explícita («y comprueba disco») conserva la solicitud mixta existente.
+        if modo == 'conceptual' and acciones and all(a.endswith('r') for a in acciones):
+            continue
+        accion = bool(acciones) or bool(re.search(r'\b(cuanta (?:memoria|ram) (?:tengo|queda|hay)|cuanto espacio (?:queda|tengo|hay)|cual es (?:mi |la )?ip publica)\b', clausula))
         if not accion and modo in ('excluida', 'conceptual') and temas:
             continue
         motivo = None

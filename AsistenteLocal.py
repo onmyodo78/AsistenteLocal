@@ -913,13 +913,13 @@ def interpretar_contexto(pregunta, contexto, nombres, deadline):
     mensajes = [
         {'role': 'system', 'content': prompt_segun_backend() +
          '\nNo ejecutes herramientas. Interpreta solo el contexto factual de Python. '
-         'Si no hay evidencia indica que la comprobación no se ha realizado.'},
-        {'role': 'user', 'content': pregunta},
-        {'role': 'system', 'content': factual}]
+         'Si no hay evidencia indica que la comprobación no se ha realizado.' + '\n\n' + factual},
+        {'role': 'user', 'content': pregunta}]
     try:
         respuesta = consultar_modelo(mensajes, deadline, permitir_herramientas=False, omitir_tools=True, interpretacion=True)
         mensaje = validar_respuesta(respuesta)
-        if mensaje['tool_calls'] or respuesta['choices'][0].get('finish_reason') in ('length', 'content_filter'):
+        if (mensaje['tool_calls'] or respuesta['choices'][0].get('finish_reason') in ('length', 'content_filter')
+                or not mensaje['content'] or not mensaje['content'].strip()):
             raise RespuestaInvalida('Interpretación incompleta')
     except (TimeoutError, urllib.error.URLError, OSError, http.client.HTTPException, RespuestaInvalida) as error:
         if isinstance(error, urllib.error.HTTPError):

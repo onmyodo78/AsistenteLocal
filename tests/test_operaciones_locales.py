@@ -368,6 +368,40 @@ class PreservacionIntencion(unittest.TestCase):
         self.modelo.side_effect = None
         self.modelo.return_value = {'choices': [{'message': {'role': 'assistant', 'content': texto}}]}
 
+    def test_enumeracion_conceptual_de_operaciones_no_adquiere(self):
+        for pregunta in (
+                '¿Qué diferencia hay entre consultar memoria y revisar disco?',
+                'Explícame qué significa comprobar memoria y consultar servicios fallidos',
+                '¿Qué diferencia hay entre consultar memoria y revisar disco y consultar VPN?'):
+            with self.subTest(pregunta=pregunta):
+                self.modelo.reset_mock()
+                self.preparar_modelo('Explicación teórica sin comprobaciones.')
+                p = planificar(pregunta)
+                self.assertFalse(p.nombres)
+                self.assertEqual(p.tipo, 'conceptual')
+                with patch.object(locales, 'adquirir') as adquirir, \
+                     patch.object(app, 'ejecutar_consulta') as consulta:
+                    app.preguntar(pregunta)
+                adquirir.assert_not_called()
+                consulta.assert_not_called()
+                self.modelo.assert_called_once()
+                self.assertEqual(self.modelo.call_args.args[0][-1]['content'], pregunta)
+                self.assertFalse(self.modelo.call_args.kwargs['permitir_herramientas'])
+                self.assertTrue(self.modelo.call_args.kwargs['omitir_tools'])
+
+    def test_mixta_explicita_conserva_adquisicion_y_explicacion(self):
+        for pregunta in ('Consulta la memoria y explícame qué significa el resultado',
+                         'Qué es swap y comprueba memoria'):
+            with self.subTest(pregunta=pregunta):
+                self.modelo.reset_mock()
+                self.preparar_modelo()
+                with patch.object(app, 'consultar_memoria_verificada', return_value=normalizar_memoria(
+                        dict(estado='error_lectura', codigo=None, stdout='', avisos=False))) as memoria:
+                    r = app.preguntar(pregunta)
+                memoria.assert_called_once()
+                self.modelo.assert_called_once()
+                self.assertEqual([x['operacion'] for x in r], ['memoria'])
+
     def test_plan_mixto_conserva_operaciones_y_explicacion(self):
         p = planificar('Comprueba memoria y explica qué es swap')
         self.assertEqual(p.nombres, ('memoria',))

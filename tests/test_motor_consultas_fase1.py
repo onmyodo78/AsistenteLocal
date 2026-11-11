@@ -111,6 +111,54 @@ class Motor(unittest.TestCase):
         ejecutar.assert_not_called()
         self.assertIn('comprobación no realizada', self.salida.getvalue())
 
+    def test_negacion_de_explicacion_no_consulta_modelo_ni_adquiere(self):
+        for texto in ('No expliques auditoria_seguridad',
+                      'No me expliques auditoria_seguridad anterior',
+                      'Sin interpretar correlacion_seguridad'):
+            with self.subTest(texto=texto), \
+                 patch.object(app, 'ejecutar_consulta') as ejecutar, \
+                 patch.object(app, 'consultar_modelo') as modelo:
+                p = planificar(texto)
+                self.assertFalse(p.nombres or p.reutilizar or p.conceptual or p.explicar)
+                self.preguntar(texto)
+                ejecutar.assert_not_called()
+                modelo.assert_not_called()
+
+    def test_contexto_rechaza_blancos_sin_perder_hechos_ni_repetir(self):
+        self.contexto.guardar('auditoria_seguridad', 'HECHO_SINTETICO')
+        for texto in (' ', '\t', '\n', ' \t\n '):
+            with self.subTest(texto=repr(texto)), \
+                 patch.object(app, 'ejecutar_consulta') as ejecutar, \
+                 patch.object(app, 'consultar_modelo', return_value=completa(texto)) as modelo:
+                self.salida.seek(0)
+                self.salida.truncate()
+                self.preguntar('Interpreta auditoria_seguridad anterior')
+                ejecutar.assert_not_called()
+                modelo.assert_called_once()
+                self.assertIn('HECHO_SINTETICO', self.salida.getvalue())
+                self.assertNotIn('Modelo | Asistente:', self.salida.getvalue())
+                self.assertIn('no está disponible', self.salida.getvalue())
+                self.assertIn('HECHO_SINTETICO', self.contexto.consultar()['auditoria_seguridad'][1])
+
+    def test_contexto_payload_agrupa_hechos_antes_de_pregunta(self):
+        self.contexto.guardar('auditoria_seguridad', 'HECHO_SINTETICO')
+        pregunta = 'Interpreta auditoria_seguridad anterior sin repetir'
+        with patch.object(app, 'abrir_http_local', return_value=HTTP(json.dumps(completa('Explicación')).encode())) as abrir, \
+             patch.object(app, 'registrar_metadatos'), \
+             patch.object(app, 'ejecutar_consulta') as ejecutar:
+            self.preguntar(pregunta)
+        ejecutar.assert_not_called()
+        abrir.assert_called_once()
+        payload = json.loads(abrir.call_args.args[0].data)
+        self.assertEqual([m['role'] for m in payload['messages']], ['system', 'user'])
+        self.assertIn('HECHO_SINTETICO', payload['messages'][0]['content'])
+        self.assertIn('instantánea anterior', payload['messages'][0]['content'])
+        self.assertEqual(payload['messages'][1]['content'], pregunta)
+        self.assertEqual(payload['tool_choice'], 'none')
+        self.assertNotIn('tools', payload)
+        self.assertEqual(payload['max_tokens'], 1800)
+        self.assertLessEqual(abrir.call_args.kwargs['timeout'], 90)
+
     def test_conceptual_no_ejecuta_aunque_modelo_lo_pida(self):
         with patch.object(app, 'ejecutar_consulta') as ejecutar, \
              patch.object(app, 'consultar_modelo', return_value=respuesta([llamada('auditoria_seguridad')])):
