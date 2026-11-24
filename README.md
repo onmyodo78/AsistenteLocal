@@ -1,5 +1,11 @@
 # AsistenteLocal
 
+**Linux system diagnostics, security auditing and local AI — with explicit user control.**
+
+Herramienta de diagnóstico y auditoría de sistemas Linux, desarrollada en Python, con un motor determinista independiente de la IA.
+
+[Resumen en inglés / English overview](#english-overview) · [Documentación técnica](#documentación-y-licencia) · [Licencia GPL v3](LICENSE)
+
 AsistenteLocal es una aplicación local de administración, diagnóstico, auditoría y mantenimiento Linux. Su autonomía operativa reside en Python y en políticas explícitas: puede seleccionar comprobaciones e investigar dentro de un alcance autorizado. El modelo local es una interfaz opcional de explicación y conversación; nunca es una autoridad administrativa ni una fuente de hechos verificados.
 
 El núcleo determinista funciona sin LM Studio, GPT-OSS, Codex, VS Code ni Internet. Las auditorías y los planes son de solo lectura. Las rutas administrativas APT están separadas, requieren autorización específica y no forman parte del arranque habitual.
@@ -289,3 +295,15 @@ contraseñas. Requiere el helper protegido existente; no amplía sus políticas.
 [Procedimiento, activación, reversión y límites](AUDITORIA_SEMANAL.md).
 
 Validación real de lectura y autenticación: [informe de integración Debian](VALIDACION_INTEGRACION_DEBIAN.md).
+
+## English overview
+
+AsistenteLocal is a Python-based Linux system diagnostics, auditing and maintenance assistant. It prioritizes privacy, local execution and explicit authorization.
+
+- Deterministic, evidence-based diagnostics for disk, memory, services, networking, security and maintenance.
+- Read-only audits and plans; external queries disabled by default.
+- Optional local LLM explanations through LM Studio, tested with GPT-OSS 20B. The core works without an AI model or Internet access.
+- Debian 13 validation and additional native Fedora 45 checks.
+- Separate, explicitly authorized administrative paths; integrated privileged APT and DNF5 operations are not fully validated.
+
+The AI explains results but is not an administrative authority or a source of verified facts. See the Spanish documentation above for installation, compatibility, safety constraints and validation status. Licensed under [GNU GPL v3](LICENSE).
